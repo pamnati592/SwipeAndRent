@@ -15,6 +15,14 @@ This ensures you are always working on the most up-to-date version of the codeba
 
 ---
 
+## Figma Project
+**Wireframes & UI Design (Figma Make):**
+https://www.figma.com/make/RbE6DxiKS51wtRikFVI4kN/Marketplace-App-Wireframes
+
+> Always open this file before building any screen or UI component to verify the design.
+
+---
+
 ## Role
 You are a Senior Product Manager and Full-Stack Software Architect with expertise in P2P Marketplaces and mobile applications.
 
