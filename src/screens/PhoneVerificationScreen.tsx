@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
 
-export default function PhoneVerificationScreen() {
+export default function PhoneVerificationScreen({ onVerified }: { onVerified: () => void }) {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -30,8 +30,8 @@ export default function PhoneVerificationScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase.from('profiles').upsert({ id: user.id, phone_verified: true });
-          await supabase.auth.refreshSession();
         }
+        onVerified();
         return;
       }
 
@@ -43,7 +43,7 @@ export default function PhoneVerificationScreen() {
         await supabase.from('profiles').upsert({ id: user.id, phone_verified: true });
       }
     } catch (e: any) {
-      Alert.alert('שגיאה', e.message);
+      Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
     }
@@ -68,11 +68,11 @@ export default function PhoneVerificationScreen() {
 
         {step === 'phone' ? (
           <>
-            <Text style={styles.title}>אמת את הטלפון שלך</Text>
-            <Text style={styles.subtitle}>נשלח אליך קוד אימות ב-SMS</Text>
+            <Text style={styles.title}>Verify your phone</Text>
+            <Text style={styles.subtitle}>We'll send you a verification code via SMS</Text>
 
             <View style={styles.field}>
-              <Text style={styles.label}>מספר טלפון</Text>
+              <Text style={styles.label}>Phone number</Text>
               <TextInput
                 style={styles.input}
                 placeholder="+972 50 000 0000"
@@ -84,16 +84,16 @@ export default function PhoneVerificationScreen() {
               />
             </View>
 
-            <Text style={styles.note}>תעריפי SMS רגילים עשויים לחול</Text>
+            <Text style={styles.note}>Standard SMS rates may apply</Text>
 
             <TouchableOpacity style={styles.button} onPress={sendCode} disabled={loading || !phone.trim()}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>שלח קוד</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send code</Text>}
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <Text style={styles.title}>הכנס קוד אימות</Text>
-            <Text style={styles.subtitle}>שלחנו קוד ל-{phone}</Text>
+            <Text style={styles.title}>Enter verification code</Text>
+            <Text style={styles.subtitle}>We sent a code to {phone}</Text>
 
             <View style={styles.otpRow}>
               {otp.map((digit, i) => (
@@ -110,12 +110,14 @@ export default function PhoneVerificationScreen() {
               ))}
             </View>
 
+            <Text style={styles.note}>Dev mode: use 123456 to bypass SMS verification</Text>
+
             <TouchableOpacity style={styles.button} onPress={verifyCode} disabled={loading || otp.join('').length < 6}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>אמת קוד</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify code</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setStep('phone')} style={styles.backLink}>
-              <Text style={styles.backLinkText}>שנה מספר טלפון</Text>
+              <Text style={styles.backLinkText}>Change phone number</Text>
             </TouchableOpacity>
           </>
         )}

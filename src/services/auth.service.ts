@@ -11,6 +11,7 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       redirectTo: redirectUrl,
+      skipBrowserRedirect: true,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
@@ -34,6 +35,16 @@ export async function signInWithGoogle() {
       }
     }
   }
+}
+
+export async function signInWithEmail(email: string, password: string) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+}
+
+export async function signUpWithEmail(email: string, password: string) {
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) throw error;
 }
 
 export async function signOut() {
