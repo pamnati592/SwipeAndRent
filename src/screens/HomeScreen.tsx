@@ -1,26 +1,60 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  TextInput, Dimensions, PanResponder, Animated, Modal,
+  View, Text, StyleSheet, TouchableOpacity, Image,
+  TextInput, Dimensions, PanResponder, Animated, Modal, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
+import type { Item } from '../types/item';
+import { supabase } from '../services/supabase';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
+// Explicit card width so child Image doesn't inherit a bad percentage inside Animated.View + maxWidth
+const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 320); // 32 = 16px feed padding each side
 
-const MOCK_ITEMS = [
-  { id: '1', title: 'Professional Camera', subtitle: 'Canon EOS R5', price: '₪45/day', distance: '2.3 km', emoji: '📷' },
-  { id: '2', title: 'Gaming Console', subtitle: 'PlayStation 5', price: '₪30/day', distance: '1.1 km', emoji: '🎮' },
-  { id: '3', title: 'Camping Tent', subtitle: '4-person tent', price: '₪20/day', distance: '3.5 km', emoji: '⛺' },
-];
+const CATEGORY_EMOJI: Record<string, string> = {
+  photography: '📷',
+  gaming: '🎮',
+  camping: '⛺',
+  diy: '🔧',
+  music: '🎸',
+  sports: '⚽',
+};
 
-export default function HomeScreen() {
+type Props = {
+  navigation: NativeStackNavigationProp<HomeStackParamList, 'HomeMain'>;
+};
+
+export default function HomeScreen({ navigation }: Props) {
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [actionPanel, setActionPanel] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const position = useRef(new Animated.ValueXY()).current;
 
-  const currentItem = MOCK_ITEMS[currentIndex % MOCK_ITEMS.length];
-  const nextItem = MOCK_ITEMS[(currentIndex + 1) % MOCK_ITEMS.length];
+  const itemsRef = useRef<Item[]>([]);
+  const currentIndexRef = useRef(0);
+  const navigationRef = useRef(navigation);
+
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => { navigationRef.current = navigation; }, [navigation]);
+
+  useEffect(() => {
+    async function fetchItems() {
+      const { data, error } = await supabase
+        .from('items')
+        .select('id, title, description, daily_price, sale_price, category, city, photos')
+        .eq('verification_status', 'live');
+
+      if (!error && data) setItems(data as Item[]);
+      setLoading(false);
+    }
+    fetchItems();
+  }, []);
 
   function resetPosition() {
     Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
@@ -30,8 +64,13 @@ export default function HomeScreen() {
     const x = direction === 'right' ? SCREEN_WIDTH : -SCREEN_WIDTH;
     Animated.timing(position, { toValue: { x, y: 0 }, duration: 250, useNativeDriver: false }).start(() => {
       position.setValue({ x: 0, y: 0 });
+      if (direction === 'right') {
+        const len = itemsRef.current.length;
+        const item = len > 0 ? itemsRef.current[currentIndexRef.current % len] : null;
+        setSelectedItem(item);
+        setActionPanel(true);
+      }
       setCurrentIndex((prev) => prev + 1);
-      if (direction === 'right') setActionPanel(true);
     });
   }
 
@@ -42,6 +81,12 @@ export default function HomeScreen() {
         position.setValue({ x: gesture.dx, y: gesture.dy / 4 });
       },
       onPanResponderRelease: (_, gesture) => {
+        if (Math.abs(gesture.dx) < 6 && Math.abs(gesture.dy) < 6) {
+          const len = itemsRef.current.length;
+          const item = len > 0 ? itemsRef.current[currentIndexRef.current % len] : null;
+          if (item) navigationRef.current.navigate('ItemDetail', { item });
+          return;
+        }
         if (gesture.dx > SWIPE_THRESHOLD) swipeOut('right');
         else if (gesture.dx < -SWIPE_THRESHOLD) swipeOut('left');
         else resetPosition();
@@ -54,9 +99,31 @@ export default function HomeScreen() {
     outputRange: ['-15deg', '0deg', '15deg'],
   });
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No items available</Text>
+          <Text style={styles.emptySubtext}>Check back later</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const len = items.length;
+  const currentItem = items[currentIndex % len];
+  const nextItem = len > 1 ? items[(currentIndex + 1) % len] : undefined;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Search Bar */}
       <View style={styles.topBar}>
         <TextInput style={styles.searchInput} placeholder="Search..." placeholderTextColor="#888" />
         <TouchableOpacity style={styles.filterButton}>
@@ -64,26 +131,23 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Card Feed */}
       <View style={styles.feed}>
-        <View style={[styles.card, styles.backCard]}>
-          <View style={styles.imageArea}>
-            <Text style={styles.itemEmoji}>{nextItem.emoji}</Text>
+        {nextItem && (
+          <View style={[styles.card, styles.backCard]}>
+            <CardImage key={nextItem.id} item={nextItem} />
           </View>
-        </View>
+        )}
 
         <Animated.View
           style={[styles.card, { transform: [...position.getTranslateTransform(), { rotate }] }]}
           {...panResponder.panHandlers}
         >
-          <View style={styles.imageArea}>
-            <Text style={styles.itemEmoji}>{currentItem.emoji}</Text>
-          </View>
+          <CardImage key={currentItem.id} item={currentItem} />
           <View style={styles.cardContent}>
             <Text style={styles.itemTitle}>{currentItem.title}</Text>
-            <Text style={styles.itemSubtitle}>{currentItem.subtitle}</Text>
-            <Text style={styles.itemPrice}>{currentItem.price}</Text>
-            <Text style={styles.itemDistance}>📍 {currentItem.distance}</Text>
+            <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
+            <Text style={styles.itemPrice}>₪{currentItem.daily_price}/day</Text>
+            {currentItem.city && <Text style={styles.itemDistance}>📍 {currentItem.city}</Text>}
           </View>
           <View style={styles.swipeButtons}>
             <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
@@ -96,28 +160,21 @@ export default function HomeScreen() {
         </Animated.View>
       </View>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        {[
-          { icon: '🏠', label: 'Home', active: true },
-          { icon: '✨', label: 'AI Planner', active: false },
-          { icon: '❤️', label: 'Wishlist', active: false },
-          { icon: '💬', label: 'Chats', active: false },
-          { icon: '👤', label: 'Profile', active: false },
-        ].map((tab) => (
-          <TouchableOpacity key={tab.label} style={styles.navTab}>
-            <Text style={styles.navIcon}>{tab.icon}</Text>
-            <Text style={[styles.navLabel, tab.active && styles.navLabelActive]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Action Panel - Bottom Sheet */}
       <Modal visible={actionPanel} transparent animationType="slide">
         <View style={styles.overlay}>
           <View style={styles.bottomSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{MOCK_ITEMS[(currentIndex - 1 + MOCK_ITEMS.length) % MOCK_ITEMS.length].title}</Text>
+            <Text style={styles.sheetTitle}>{selectedItem?.title}</Text>
+
+            <TouchableOpacity
+              style={styles.sheetButton}
+              onPress={() => {
+                setActionPanel(false);
+                if (selectedItem) navigationRef.current.navigate('ItemDetail', { item: selectedItem });
+              }}
+            >
+              <Text style={styles.sheetButtonText}>📋 View Details</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetButton} onPress={() => setActionPanel(false)}>
               <Text style={styles.sheetButtonText}>🏷️ Rent</Text>
@@ -141,6 +198,28 @@ export default function HomeScreen() {
   );
 }
 
+function CardImage({ item }: { item: Item }) {
+  const [failed, setFailed] = useState(false);
+  const mainPhoto = item.photos?.filter(Boolean)[0];
+
+  if (mainPhoto && !failed) {
+    return (
+      <Image
+        source={{ uri: mainPhoto }}
+        style={styles.cardPhoto}
+        resizeMode="cover"
+        onLoad={() => console.log('[Card] image loaded')}
+        onError={() => { console.warn('[Card] image error'); setFailed(true); }}
+      />
+    );
+  }
+  return (
+    <View style={styles.cardPhotoFallback}>
+      <Text style={styles.itemEmoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a1a1a' },
   topBar: {
@@ -161,13 +240,20 @@ const styles = StyleSheet.create({
   filterIcon: { fontSize: 18 },
   feed: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   card: {
-    width: '100%', maxWidth: 320, height: 460,
+    width: CARD_WIDTH, height: 460,
     backgroundColor: '#2a2a2a', borderRadius: 16,
     borderWidth: 2, borderColor: '#3a3a3a', overflow: 'hidden',
   },
   backCard: { position: 'absolute', transform: [{ scale: 0.95 }], opacity: 0.5 },
-  imageArea: {
-    height: 220, backgroundColor: '#333',
+  cardPhoto: {
+    width: CARD_WIDTH,
+    height: 220,
+    borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
+  },
+  cardPhotoFallback: {
+    width: CARD_WIDTH,
+    height: 220,
+    backgroundColor: '#333',
     alignItems: 'center', justifyContent: 'center',
     borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
   },
@@ -187,25 +273,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   swipeBtnText: { fontSize: 22, color: '#fff' },
-  bottomNav: {
-    height: 72, backgroundColor: '#242424',
-    borderTopWidth: 1, borderTopColor: '#333',
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-around', paddingHorizontal: 8,
-  },
-  navTab: { alignItems: 'center', gap: 2 },
-  navIcon: { fontSize: 22 },
-  navLabel: { fontSize: 10, color: '#666' },
-  navLabelActive: { color: '#fff' },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  emptyText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  emptySubtext: { fontSize: 14, color: '#666' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   bottomSheet: {
     backgroundColor: '#242424', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, gap: 12,
   },
-  sheetHandle: {
-    width: 40, height: 4, backgroundColor: '#444',
-    borderRadius: 2, alignSelf: 'center', marginBottom: 8,
-  },
+  sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
   sheetTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
   sheetButton: {
     height: 56, backgroundColor: '#2a2a2a',
@@ -213,8 +289,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sheetButtonText: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  sheetCancelButton: {
-    height: 48, alignItems: 'center', justifyContent: 'center',
-  },
+  sheetCancelButton: { height: 48, alignItems: 'center', justifyContent: 'center' },
   sheetCancelText: { color: '#666', fontSize: 14 },
 });

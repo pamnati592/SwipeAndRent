@@ -13,6 +13,16 @@ This is the single source of truth for the project. Never rely on prior memory �
 4. Review any modified files relevant to the current task before making changes
 This ensures you are always working on the most up-to-date version of the codebase and are aware of your teammates' recent changes.
 
+## ⚠️ MANDATORY – After Every GitHub Push
+**Every time you push changes to GitHub, end your response with a clearly marked section:**
+
+```
+## Next Suggested Step
+[1–3 sentences describing the most logical next task to continue from where we left off]
+```
+
+This must appear after every push — it is the handoff note for the next session so work can resume immediately without re-explaining context.
+
 ---
 
 ## Figma Project
@@ -113,12 +123,19 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
 ### 3.5 Home Screen & Swiping Feed (Section 4.5)
 - Home screen shows algorithm-driven item cards
 - Algorithm factors in user location and distance
-- Card displays: main photo, item name, price, distance (km), rental rating, previous renter reviews
+- Card displays: first item photo (falls back to category emoji if none), item name, price, city
 - **Swipe Left** → mark item as "not relevant", feed algorithm updated
-- **Swipe Right** → open action panel: Rent / Buy / Wishlist / Open Chat
+- **Swipe Right** → open action panel: View Details / Rent / Buy / Wishlist
+- **Tap card** → opens Item Detail Screen
 - Tap "Rent" → interactive panel with available calendar dates
 - Tap "Buy" → only available if lender set a sale price
 - Tap "Chat" → opens chat window with automatic opening message
+
+**Item Detail Screen:**
+- Paginated full-width photo gallery (swipe between photos, dot indicators)
+- Falls back to category emoji if no photos uploaded
+- Shows: title, daily price, sale price (if applicable), category, city, description
+- Action buttons: Rent, Buy (conditional), Wishlist, Chat
 
 ### 3.6 Smart AI Search Agent (Section 4.6)
 - Agent button displayed prominently on the home screen
@@ -130,10 +147,20 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
 
 ### 3.7 Item Upload & Verification (Section 4.7)
 - Tap (+) → opens "Add New Item"
-- Required fields: name, category, description, daily price, rental availability
+- Required fields: name, category, description, daily price, city
 - Optional field: for sale – set a sale price (if yes → Swipe Right includes "Buy" option)
-- Photos taken via in-app camera only (not gallery) for verification purposes
 - Item saved as Pending until verified (manual / AI)
+
+**Two separate photo types:**
+
+| Type | Source | Limit | Stored in | Visible to |
+|---|---|---|---|---|
+| Item Photos | Camera or Gallery | Up to 6 | `photos[]` array | All users (card + detail screen) |
+| Verification Photo | Camera only | 1 | `verification_image_url` | Admins only (for verification) |
+
+- First photo in `photos[]` = cover image shown on the swipe card
+- If no item photos → card shows category emoji as fallback
+- Item Photos can be reordered; first photo becomes the card cover
 
 ### 3.8 Date Request & Business Approval (Section 4.8)
 - Renter selects dates and sends request to lender
@@ -221,7 +248,8 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
 | Geo_Location | Coordinates (PostGIS) | Geographic location |
 | Tags_Vector | Vector/Array | AI matching & search |
 | Verification_Status | Enum | Draft / Pending / Live / Rented |
-| Verification_Image_URL | Secure Bucket URL | Verification image |
+| Verification_Image_URL | text (Storage URL) | Camera-only verification photo, admin use only |
+| Photos | text[] (Storage URLs) | Public gallery (up to 6); first entry = card cover image |
 
 **Transactions Table:**
 | Field | Type | Notes |

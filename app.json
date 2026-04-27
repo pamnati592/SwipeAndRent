@@ -27,6 +27,16 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "swipeandrent"
+    "scheme": "swipeandrent",
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "SwipeAndRent needs camera access to take photos of your items.",
+          "microphonePermission": false,
+          "photosPermission": "SwipeAndRent needs photo library access to select item photos."
+        }
+      ]
+    ]
   }
 }
