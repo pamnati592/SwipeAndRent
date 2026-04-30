@@ -4,14 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
 import LoginScreen from '../screens/LoginScreen';
-import HomeScreen from '../screens/HomeScreen';
 import PhoneVerificationScreen from '../screens/PhoneVerificationScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import MainTabNavigator from './MainTabNavigator';
 import { onAuthStateChange } from '../services/auth.service';
 import { supabase } from '../services/supabase';
 
 export type RootStackParamList = {
-  Home: undefined;
+  MainApp: undefined;
   Login: undefined;
   PhoneVerification: { onVerified: () => void };
   Onboarding: { onFinished: () => void };
@@ -67,7 +67,7 @@ export default function RootNavigator() {
               {() => <OnboardingScreen onFinished={() => setOnboardingComplete(true)} />}
             </Stack.Screen>
           ) : (
-            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="MainApp" component={MainTabNavigator} />
           )}
         </Stack.Navigator>
       </NavigationContainer>

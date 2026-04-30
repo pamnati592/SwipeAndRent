@@ -29,7 +29,11 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
       if (code === '123456') {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          await supabase.from('profiles').upsert({ id: user.id, phone_verified: true });
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ phone_verified: true })
+            .eq('id', user.id);
+          if (updateError) throw updateError;
         }
         onVerified();
         return;
@@ -40,7 +44,11 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
 
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('profiles').upsert({ id: user.id, phone_verified: true });
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ phone_verified: true })
+          .eq('id', user.id);
+        if (updateError) throw updateError;
       }
     } catch (e: any) {
       Alert.alert('Error', e.message);

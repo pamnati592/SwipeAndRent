@@ -53,14 +53,16 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase.from('profiles').upsert({
-        id: user.id,
-        role,
-        full_name: fullName.trim(),
-        city: city.trim(),
-        interests,
-        onboarding_complete: true,
-      });
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          role,
+          full_name: fullName.trim(),
+          city: city.trim(),
+          interests,
+          onboarding_complete: true,
+        })
+        .eq('id', user.id);
 
       if (error) throw error;
       onFinished();
