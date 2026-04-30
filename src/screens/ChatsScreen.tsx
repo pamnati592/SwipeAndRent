@@ -14,6 +14,8 @@ type ConversationRow = {
   lender_id: string;
   last_message: string | null;
   last_message_at: string | null;
+  renter_last_read_at: string | null;
+  lender_last_read_at: string | null;
   item_title: string;
   renter_name: string;
   lender_name: string;
@@ -44,6 +46,7 @@ export default function ChatsScreen({ navigation }: Props) {
       .from('conversations')
       .select(`
         id, renter_id, lender_id, last_message, last_message_at,
+        renter_last_read_at, lender_last_read_at,
         items(title),
         renter:profiles!conversations_renter_id_fkey(full_name),
         lender:profiles!conversations_lender_id_fkey(full_name)
@@ -58,6 +61,8 @@ export default function ChatsScreen({ navigation }: Props) {
           lender_id: c.lender_id,
           last_message: c.last_message,
           last_message_at: c.last_message_at,
+          renter_last_read_at: c.renter_last_read_at,
+          lender_last_read_at: c.lender_last_read_at,
           item_title: c.items?.title ?? 'Item',
           renter_name: c.renter?.full_name ?? 'Renter',
           lender_name: c.lender?.full_name ?? 'Lender',
@@ -70,6 +75,15 @@ export default function ChatsScreen({ navigation }: Props) {
   function otherName(conv: ConversationRow): string {
     if (!currentUserId) return '';
     return conv.renter_id === currentUserId ? conv.lender_name : conv.renter_name;
+  }
+
+  function isUnread(conv: ConversationRow): boolean {
+    if (!currentUserId || !conv.last_message_at) return false;
+    const myLastRead = conv.renter_id === currentUserId
+      ? conv.renter_last_read_at
+      : conv.lender_last_read_at;
+    if (!myLastRead) return true;
+    return new Date(conv.last_message_at) > new Date(myLastRead);
   }
 
   function formatTime(iso: string | null): string {
@@ -107,6 +121,7 @@ export default function ChatsScreen({ navigation }: Props) {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item: conv }) => {
             const name = otherName(conv);
+            const unread = isUnread(conv);
             return (
               <TouchableOpacity
                 style={styles.row}
@@ -120,14 +135,19 @@ export default function ChatsScreen({ navigation }: Props) {
               >
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                  {unread && <View style={styles.avatarDot} />}
                 </View>
                 <View style={styles.rowContent}>
                   <View style={styles.rowTop}>
-                    <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-                    <Text style={styles.time}>{formatTime(conv.last_message_at)}</Text>
+                    <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={[styles.time, unread && styles.timeUnread]}>
+                      {formatTime(conv.last_message_at)}
+                    </Text>
                   </View>
                   <Text style={styles.itemTitle} numberOfLines={1}>📦 {conv.item_title}</Text>
-                  <Text style={styles.lastMessage} numberOfLines={1}>
+                  <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
                     {conv.last_message ?? 'No messages yet'}
                   </Text>
                 </View>
@@ -159,10 +179,18 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 20, color: '#fff', fontWeight: '600' },
+  avatarDot: {
+    position: 'absolute', top: 0, right: 0,
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#4cd964', borderWidth: 2, borderColor: '#1a1a1a',
+  },
   rowContent: { flex: 1, gap: 2 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   userName: { fontSize: 15, fontWeight: '600', color: '#fff', flex: 1, marginRight: 8 },
+  userNameUnread: { color: '#fff', fontWeight: '700' },
   time: { fontSize: 12, color: '#666' },
+  timeUnread: { color: '#4cd964', fontWeight: '600' },
   itemTitle: { fontSize: 12, color: '#666' },
   lastMessage: { fontSize: 13, color: '#888', marginTop: 1 },
+  lastMessageUnread: { color: '#fff', fontWeight: '500' },
 });

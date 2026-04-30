@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View } from 'react-native';
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import { useUnreadCount } from '../hooks/useUnreadCount';
 import HomeStackNavigator from './HomeStackNavigator';
 import ChatsStackNavigator from './ChatsStackNavigator';
 import type { ChatsStackParamList } from './ChatsStackNavigator';
@@ -33,6 +34,8 @@ const TAB_LABELS: Partial<Record<keyof MainTabParamList, string>> = {
 };
 
 export default function MainTabNavigator() {
+  const unreadCount = useUnreadCount();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -75,7 +78,11 @@ export default function MainTabNavigator() {
       <Tab.Screen name="HomeStack" component={HomeStackNavigator} />
       <Tab.Screen name="AIPlanner" component={AIPlannerScreen} />
       <Tab.Screen name="AddItem" component={AddItemScreen} />
-      <Tab.Screen name="Chats" component={ChatsStackNavigator} />
+      <Tab.Screen
+        name="Chats"
+        component={ChatsStackNavigator}
+        options={{ tabBarBadge: unreadCount > 0 ? unreadCount : undefined }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

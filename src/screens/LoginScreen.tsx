@@ -33,7 +33,6 @@ export default function LoginScreen() {
       setLoading(true);
       if (isSignUp) {
         await signUpWithEmail(email, password);
-        Alert.alert('Check your email', 'We sent you a confirmation link.');
       } else {
         await signInWithEmail(email, password);
       }

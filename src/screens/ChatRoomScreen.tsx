@@ -18,9 +18,9 @@ type Message = {
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 
 export default function ChatRoomScreen({ navigation, route }: Props) {
-  const { conversationId, itemTitle, otherUserName } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText } = route.params;
   const [messages, setMessages] = useState<Message[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText ?? '');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -42,6 +42,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       if (!error && data && mounted) setMessages(data as Message[]);
       if (mounted) setLoading(false);
+
+      await markAsRead(user.id);
 
       // Subscribe to new messages in real time
       channelRef.current = supabase
@@ -70,6 +72,20 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     };
   }, [conversationId]);
 
+  async function markAsRead(userId: string) {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('renter_id')
+      .eq('id', conversationId)
+      .single();
+    if (!conv) return;
+    const field = conv.renter_id === userId ? 'renter_last_read_at' : 'lender_last_read_at';
+    await supabase
+      .from('conversations')
+      .update({ [field]: new Date().toISOString() })
+      .eq('id', conversationId);
+  }
+
   async function send() {
     const content = text.trim();
     if (!content || !currentUserId || sending) return;
@@ -83,10 +99,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     });
 
     if (!error) {
+      const now = new Date().toISOString();
+      // Update last_message first — this must never fail
       await supabase
         .from('conversations')
-        .update({ last_message: content, last_message_at: new Date().toISOString() })
+        .update({ last_message: content, last_message_at: now })
         .eq('id', conversationId);
+      // Update sender's last_read_at separately so a schema issue can't break last_message
+      await markAsRead(currentUserId);
     }
 
     setSending(false);

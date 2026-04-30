@@ -4,7 +4,7 @@ import ChatRoomScreen from '../screens/ChatRoomScreen';
 
 export type ChatsStackParamList = {
   ConversationsList: undefined;
-  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string };
+  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string };
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();

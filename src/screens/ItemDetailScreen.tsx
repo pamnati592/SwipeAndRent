@@ -46,8 +46,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       let conversationId = existing?.id as string | undefined;
 
       if (!conversationId) {
-        const openingMsg = `Hi! I'm interested in renting "${item.title}". Is it available?`;
-
         const { data: newConv, error } = await supabase
           .from('conversations')
           .insert({ item_id: item.id, renter_id: user.id, lender_id: item.owner_id })
@@ -56,16 +54,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
         if (error) throw error;
         conversationId = newConv.id;
-
-        await supabase.from('messages').insert({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content: openingMsg,
-        });
-        await supabase
-          .from('conversations')
-          .update({ last_message: openingMsg, last_message_at: new Date().toISOString() })
-          .eq('id', conversationId);
       }
 
       // Fetch lender name for the chat header
@@ -80,7 +68,12 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       // Navigate up to the Tab navigator, then into Chats → ChatRoom
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
-        params: { conversationId, itemTitle: item.title, otherUserName },
+        params: {
+          conversationId,
+          itemTitle: item.title,
+          otherUserName,
+          initialText: `Hi! I'm interested in renting "${item.title}". Is it available?`,
+        },
       });
     } catch (e: any) {
       Alert.alert('Error', e.message);
