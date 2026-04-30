@@ -1,5 +1,6 @@
 export type Item = {
   id: string;
+  owner_id: string;
   title: string;
   description: string | null;
   daily_price: number;

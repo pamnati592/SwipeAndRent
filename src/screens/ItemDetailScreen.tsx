@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Image, FlatList, TouchableOpacity,
-  ScrollView, Dimensions, StatusBar,
+  ScrollView, Dimensions, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
+import { supabase } from '../services/supabase';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -24,12 +25,74 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const { item } = route.params;
   const photos = item.photos?.filter(Boolean) ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  async function openChat() {
+    setChatLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { Alert.alert('Error', 'You must be logged in to chat'); return; }
+      if (user.id === item.owner_id) { Alert.alert('This is your item', 'You cannot chat with yourself'); return; }
+
+      // Find or create conversation
+      const { data: existing } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('item_id', item.id)
+        .eq('renter_id', user.id)
+        .eq('lender_id', item.owner_id)
+        .maybeSingle();
+
+      let conversationId = existing?.id as string | undefined;
+
+      if (!conversationId) {
+        const openingMsg = `Hi! I'm interested in renting "${item.title}". Is it available?`;
+
+        const { data: newConv, error } = await supabase
+          .from('conversations')
+          .insert({ item_id: item.id, renter_id: user.id, lender_id: item.owner_id })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        conversationId = newConv.id;
+
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          content: openingMsg,
+        });
+        await supabase
+          .from('conversations')
+          .update({ last_message: openingMsg, last_message_at: new Date().toISOString() })
+          .eq('id', conversationId);
+      }
+
+      // Fetch lender name for the chat header
+      const { data: lenderProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', item.owner_id)
+        .single();
+
+      const otherUserName = (lenderProfile as any)?.full_name ?? 'Lender';
+
+      // Navigate up to the Tab navigator, then into Chats → ChatRoom
+      (navigation as any).getParent()?.navigate('Chats', {
+        screen: 'ChatRoom',
+        params: { conversationId, itemTitle: item.title, otherUserName },
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setChatLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Back button */}
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -54,26 +117,20 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                     source={{ uri: photoUrl }}
                     style={styles.photo}
                     resizeMode="cover"
-                    onError={(e) => console.warn('Item photo failed to load:', photoUrl, e.nativeEvent.error)}
                   />
                 )}
               />
               {photos.length > 1 && (
                 <View style={styles.dotRow}>
                   {photos.map((_, i) => (
-                    <View
-                      key={i}
-                      style={[styles.dot, i === activeIndex && styles.dotActive]}
-                    />
+                    <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />
                   ))}
                 </View>
               )}
             </>
           ) : (
             <View style={styles.emojiPlaceholder}>
-              <Text style={styles.emojiText}>
-                {CATEGORY_EMOJI[item.category] ?? '📦'}
-              </Text>
+              <Text style={styles.emojiText}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
             </View>
           )}
         </View>
@@ -123,8 +180,15 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               <Text style={styles.actionBtnTextSecondary}>❤️ Wishlist</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.actionBtn, styles.actionBtnSecondary]}>
-              <Text style={styles.actionBtnTextSecondary}>💬 Chat</Text>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnSecondary, chatLoading && styles.actionBtnDisabled]}
+              onPress={openChat}
+              disabled={chatLoading}
+            >
+              {chatLoading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.actionBtnTextSecondary}>💬 Chat</Text>
+              }
             </TouchableOpacity>
           </View>
         </View>
@@ -180,4 +244,5 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#3a3a3a',
   },
   actionBtnTextSecondary: { color: '#fff', fontSize: 16, fontWeight: '500' },
+  actionBtnDisabled: { opacity: 0.5 },
 });

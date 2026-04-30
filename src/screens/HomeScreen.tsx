@@ -47,7 +47,7 @@ export default function HomeScreen({ navigation }: Props) {
     async function fetchItems() {
       const { data, error } = await supabase
         .from('items')
-        .select('id, title, description, daily_price, sale_price, category, city, photos')
+        .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
         .eq('verification_status', 'live');
 
       if (!error && data) setItems(data as Item[]);

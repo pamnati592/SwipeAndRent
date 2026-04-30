@@ -1,16 +1,18 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View } from 'react-native';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import HomeStackNavigator from './HomeStackNavigator';
+import ChatsStackNavigator from './ChatsStackNavigator';
+import type { ChatsStackParamList } from './ChatsStackNavigator';
 import AIPlannerScreen from '../screens/AIPlannerScreen';
 import AddItemScreen from '../screens/AddItemScreen';
-import ChatsScreen from '../screens/ChatsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 export type MainTabParamList = {
   HomeStack: undefined;
   AIPlanner: undefined;
   AddItem: undefined;
-  Chats: undefined;
+  Chats: NavigatorScreenParams<ChatsStackParamList>;
   Profile: undefined;
 };
 
@@ -73,7 +75,7 @@ export default function MainTabNavigator() {
       <Tab.Screen name="HomeStack" component={HomeStackNavigator} />
       <Tab.Screen name="AIPlanner" component={AIPlannerScreen} />
       <Tab.Screen name="AddItem" component={AddItemScreen} />
-      <Tab.Screen name="Chats" component={ChatsScreen} />
+      <Tab.Screen name="Chats" component={ChatsStackNavigator} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
