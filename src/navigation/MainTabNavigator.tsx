@@ -7,7 +7,7 @@ import ChatsStackNavigator from './ChatsStackNavigator';
 import type { ChatsStackParamList } from './ChatsStackNavigator';
 import AIPlannerScreen from '../screens/AIPlannerScreen';
 import AddItemScreen from '../screens/AddItemScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileStackNavigator from './ProfileStackNavigator';
 
 export type MainTabParamList = {
   HomeStack: undefined;
@@ -83,7 +83,7 @@ export default function MainTabNavigator() {
         component={ChatsStackNavigator}
         options={{ tabBarBadge: unreadCount > 0 ? unreadCount : undefined }}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }

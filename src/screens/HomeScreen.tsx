@@ -176,7 +176,13 @@ export default function HomeScreen({ navigation }: Props) {
               <Text style={styles.sheetButtonText}>📋 View Details</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => setActionPanel(false)}>
+            <TouchableOpacity
+              style={styles.sheetButton}
+              onPress={() => {
+                setActionPanel(false);
+                if (selectedItem) navigationRef.current.navigate('ItemDetail', { item: selectedItem, openRent: true });
+              }}
+            >
               <Text style={styles.sheetButtonText}>🏷️ Rent</Text>
             </TouchableOpacity>
 

@@ -5,7 +5,7 @@ import type { Item } from '../types/item';
 
 export type HomeStackParamList = {
   HomeMain: undefined;
-  ItemDetail: { item: Item };
+  ItemDetail: { item: Item; openRent?: boolean };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();

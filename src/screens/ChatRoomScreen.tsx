@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,7 +13,23 @@ type Message = {
   sender_id: string;
   content: string;
   created_at: string;
+  transaction_id?: string | null;
 };
+
+type Transaction = {
+  id: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  total_price: number;
+};
+
+type ConversationInfo = {
+  lender_id: string;
+  renter_id: string;
+};
+
+const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 
@@ -24,6 +40,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [convInfo, setConvInfo] = useState<ConversationInfo | null>(null);
+  const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
+  const [actionLoading, setActionLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
@@ -34,33 +53,41 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       if (!user || !mounted) return;
       setCurrentUserId(user.id);
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('id, sender_id, content, created_at')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false });
+      const [messagesRes, convRes, txRes] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('id, sender_id, content, created_at, transaction_id')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('conversations')
+          .select('lender_id, renter_id')
+          .eq('id', conversationId)
+          .single(),
+        supabase
+          .from('transactions')
+          .select('id, status, start_date, end_date, total_price')
+          .eq('conversation_id', conversationId),
+      ]);
 
-      if (!error && data && mounted) setMessages(data as Message[]);
-      if (mounted) setLoading(false);
+      if (!mounted) return;
+      if (messagesRes.data) setMessages(messagesRes.data as Message[]);
+      if (convRes.data) setConvInfo(convRes.data as ConversationInfo);
+      if (txRes.data) {
+        const map: Record<string, Transaction> = {};
+        (txRes.data as Transaction[]).forEach(tx => { map[tx.id] = tx; });
+        setTransactions(map);
+      }
+      setLoading(false);
 
       await markAsRead(user.id);
 
-      // Subscribe to new messages in real time
       channelRef.current = supabase
         .channel(`messages:${conversationId}`)
         .on(
           'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `conversation_id=eq.${conversationId}`,
-          },
-          (payload) => {
-            if (mounted) {
-              setMessages((prev) => [payload.new as Message, ...prev]);
-            }
-          }
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+          (payload) => { if (mounted) setMessages((prev) => [payload.new as Message, ...prev]); }
         )
         .subscribe();
     }
@@ -80,10 +107,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       .single();
     if (!conv) return;
     const field = conv.renter_id === userId ? 'renter_last_read_at' : 'lender_last_read_at';
-    await supabase
-      .from('conversations')
-      .update({ [field]: new Date().toISOString() })
-      .eq('id', conversationId);
+    await supabase.from('conversations').update({ [field]: new Date().toISOString() }).eq('id', conversationId);
   }
 
   async function send() {
@@ -100,26 +124,129 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
     if (!error) {
       const now = new Date().toISOString();
-      // Update last_message first — this must never fail
-      await supabase
-        .from('conversations')
-        .update({ last_message: content, last_message_at: now })
-        .eq('id', conversationId);
-      // Update sender's last_read_at separately so a schema issue can't break last_message
+      await supabase.from('conversations').update({ last_message: content, last_message_at: now }).eq('id', conversationId);
       await markAsRead(currentUserId);
     }
-
     setSending(false);
+  }
+
+  async function handleApprove(transactionId: string) {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'approved' })
+        .eq('id', transactionId);
+      if (error) throw error;
+
+      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'approved' } }));
+
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        content: '✅ Request approved! Payment is due within 24 hours.',
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleReject(transactionId: string) {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'rejected' })
+        .eq('id', transactionId);
+      if (error) throw error;
+
+      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'rejected' } }));
+
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        sender_id: currentUserId,
+        content: '❌ Request declined.',
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
+  const isLender = convInfo?.lender_id === currentUserId;
+
+  function renderMessage({ item: msg }: { item: Message }) {
+    const isMe = msg.sender_id === currentUserId;
+    const isRentalRequest = msg.content.startsWith(RENTAL_REQUEST_PREFIX);
+
+    if (isRentalRequest) {
+      const tx = msg.transaction_id ? transactions[msg.transaction_id] : null;
+      return (
+        <View style={styles.requestCard}>
+          <Text style={styles.requestText}>{msg.content}</Text>
+
+          {tx && (
+            <View style={styles.requestStatus}>
+              {tx.status === 'pending' && isLender && (
+                <View style={styles.requestActions}>
+                  <TouchableOpacity
+                    style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
+                    onPress={() => handleApprove(tx.id)}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading
+                      ? <ActivityIndicator color="#000" size="small" />
+                      : <Text style={styles.approveBtnText}>✓ Approve</Text>
+                    }
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
+                    onPress={() => handleReject(tx.id)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={styles.rejectBtnText}>✕ Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {tx.status === 'approved' && (
+                <Text style={styles.statusApproved}>✅ Approved</Text>
+              )}
+              {tx.status === 'rejected' && (
+                <Text style={styles.statusRejected}>❌ Declined</Text>
+              )}
+            </View>
+          )}
+
+          <Text style={styles.requestTime}>{formatTime(msg.created_at)}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem]}>
+        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+          <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+            {msg.content}
+          </Text>
+        </View>
+        <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
+          {formatTime(msg.created_at)}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('ConversationsList')}>
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerInfo}>
@@ -141,21 +268,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             keyExtractor={(m) => m.id}
             inverted
             contentContainerStyle={styles.messageList}
-            renderItem={({ item: msg }) => {
-              const isMe = msg.sender_id === currentUserId;
-              return (
-                <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem]}>
-                  <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                    <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                      {msg.content}
-                    </Text>
-                  </View>
-                  <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
-                    {formatTime(msg.created_at)}
-                  </Text>
-                </View>
-              );
-            }}
+            renderItem={renderMessage}
           />
         )}
 
@@ -213,6 +326,31 @@ const styles = StyleSheet.create({
   bubbleTime: { fontSize: 11, marginTop: 3, color: '#666' },
   bubbleTimeMe: { textAlign: 'right' },
   bubbleTimeThem: { textAlign: 'left' },
+
+  // Rental request card
+  requestCard: {
+    alignSelf: 'center', width: '92%', marginVertical: 8,
+    backgroundColor: '#1e2a3a', borderWidth: 1, borderColor: '#2a4a6a',
+    borderRadius: 16, padding: 16, gap: 12,
+  },
+  requestText: { color: '#cce0ff', fontSize: 14, lineHeight: 20 },
+  requestStatus: { gap: 8 },
+  requestActions: { flexDirection: 'row', gap: 10 },
+  approveBtn: {
+    flex: 1, height: 44, backgroundColor: '#fff',
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+  },
+  approveBtnText: { color: '#000', fontWeight: '700', fontSize: 15 },
+  rejectBtn: {
+    flex: 1, height: 44,
+    borderWidth: 1, borderColor: '#555', borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rejectBtnText: { color: '#aaa', fontWeight: '600', fontSize: 15 },
+  btnDisabled: { opacity: 0.4 },
+  statusApproved: { color: '#4caf50', fontWeight: '600', fontSize: 14 },
+  statusRejected: { color: '#f44336', fontWeight: '600', fontSize: 14 },
+  requestTime: { color: '#555', fontSize: 11, textAlign: 'right' },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,
