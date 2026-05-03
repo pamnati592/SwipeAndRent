@@ -1,38 +1,44 @@
-# Next Recommended Step — Rental Request Flow
+# Session Summary — Rental Request Flow Complete
 
-## Goal
-Implement the full rental request loop: renter picks dates → request sent to lender → lender approves or rejects.
+## What was built this session
 
-## What to build
+### Database (apply migrations in Supabase SQL Editor in this order)
+1. `20260503_transactions_rental_flow.sql` — adds `approved`/`rejected` enum values, `lender_id`, `conversation_id` to transactions
+2. `20260503_create_rental_request_rpc.sql` — atomic RPC that creates conversation + transaction + message in one DB transaction (re-run this one too, it was updated)
+3. `20260503_messages_transaction_id.sql` — links each rental request message to its specific transaction
 
-### 1. Database migration
-- Create `transactions` table:
-  - `id`, `item_id`, `renter_id`, `lender_id`, `start_date`, `end_date`
-  - `status` enum: `pending | approved | rejected | active | completed | disputed`
-  - `created_at`, `updated_at`
-- RLS: renter and lender can read their own transactions; only renter can insert; only lender can update status
+### Features shipped
+- **Rent flow** — Swipe right → tap Rent → calendar date picker modal with blocked dates → Send Request → atomic DB write → auto-navigate to chat
+- **Lender approval UI** — Rental request messages appear as blue cards in chat; lender sees Approve/Decline buttons per request; each card is tied to its own transaction (multiple requests don't interfere)
+- **My Items screen** — Profile → My Items shows all lender's items with availability badge (Available / Pending / Booked / Rented) and upcoming bookings; booking rows link directly to the conversation
+- **Switch User** — Profile → Switch User caches sessions so switching between test accounts is instant after the first sign-in. Credentials live in `src/config/testAccounts.ts` (gitignored — copy from `testAccounts.example.ts`)
+- **Nav fixes** — Back button in ChatRoom always returns to ConversationsList; Cancel button on rent modal is visible and tappable
 
-### 2. Rent button → Date picker modal (ItemDetailScreen)
-- Tap "Rent" → open a modal with a calendar date-range picker
-- Blocked dates (from existing transactions) shown as unavailable
-- User selects start + end date → taps "Send Request"
+---
 
-### 3. Transaction creation
-- Insert row into `transactions` with `status = pending`
-- Block selected dates on the item's availability calendar
+## ⚠️ Reminder: Test Switch User
+You didn't have time to test the Switch User feature this session.
+Make sure to test it at the start of the next session — fill in `testAccounts.ts` and verify that switching between Ori and Nati works correctly and that subsequent switches are instant.
 
-### 4. Lender notification in chat
-- Auto-send a system-style message in the conversation:
-  `"📅 Rental request: [start] → [end]. Tap to approve or reject."`
-- If no conversation exists yet, create one first
+---
 
-### 5. Lender approval UI (ChatRoomScreen or separate screen)
-- Lender sees the request message with Approve / Reject buttons
-- Approve → `status = approved`, renter notified
-- Reject → `status = rejected`, dates freed up
+## Next Steps
 
-## Files to create / modify
-- `supabase/migrations/YYYYMMDD_transactions.sql`
-- `src/screens/ItemDetailScreen.tsx` — wire Rent button to date picker
-- `src/screens/ChatRoomScreen.tsx` — render rental request card with action buttons
-- `src/types/transaction.ts` — Transaction type definition
+### 1. Payment flow (Stripe)
+- Integrate Stripe checkout after lender approves a request
+- Renter has 24 hours to pay after approval — add expiry logic
+- Show payment status in the rental request card
+
+### 2. QR code transfer & return
+- Generate a unique QR code per transaction
+- Lender scans QR at handoff → status becomes `active`
+- Lender scans QR at return → status becomes `completed`
+- Geo-fence check: both parties must be within 50 meters
+
+### 3. Renter's rental history
+- A screen (under Profile or separate tab) where the renter sees all their rentals: upcoming, active, past
+- Mirror of the lender's My Items screen but from the renter's perspective
+
+### 4. Push notifications (deferred)
+- expo-notifications + Expo push token stored in profiles
+- Supabase Edge Function triggered on message insert → sends push to recipient
