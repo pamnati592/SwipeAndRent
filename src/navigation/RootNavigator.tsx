@@ -67,7 +67,9 @@ export default function RootNavigator() {
               {() => <OnboardingScreen onFinished={() => setOnboardingComplete(true)} />}
             </Stack.Screen>
           ) : (
-            <Stack.Screen name="MainApp" component={MainTabNavigator} />
+            <Stack.Screen name="MainApp">
+              {() => <MainTabNavigator key={session.user.id} />}
+            </Stack.Screen>
           )}
         </Stack.Navigator>
       </NavigationContainer>

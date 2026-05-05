@@ -147,6 +147,7 @@ export default function MyRentalsScreen({ navigation }: Props) {
                       conversationId: r.conversation_id,
                       itemTitle: r.item_title,
                       otherUserName: r.lender_name,
+                      targetTransactionId: r.id,
                     },
                   });
                 }}

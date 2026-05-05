@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
+import { chatBus } from '../services/chatBus';
 
 export function useUnreadCount(): number {
   const [count, setCount] = useState(0);
@@ -35,14 +36,16 @@ export function useUnreadCount(): number {
 
     fetchCount();
 
+    const unsubBus = chatBus.subscribe(fetchCount);
+
     const channel = supabase
       .channel('unread-count-watch')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, fetchCount)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, fetchCount)
       .subscribe();
 
     return () => {
       mounted = false;
+      unsubBus();
       channel.unsubscribe();
     };
   }, []);

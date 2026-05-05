@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  Modal, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { Calendar } from 'react-native-calendars';
 import { supabase } from '../services/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
@@ -23,6 +25,8 @@ type ItemRow = {
   category: string;
   verification_status: string;
   daily_price: number;
+  available_from: string | null;
+  available_to: string | null;
   bookings: Booking[];
 };
 
@@ -53,9 +57,28 @@ function fmt(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+function buildPeriodMarks(start: string | null, end: string | null): Record<string, any> {
+  if (!start) return {};
+  const marks: Record<string, any> = {};
+  const cur = new Date(start);
+  const last = end ? new Date(end) : new Date(start);
+  let i = 0;
+  while (cur <= last) {
+    const d = cur.toISOString().split('T')[0];
+    marks[d] = { color: '#fff', textColor: '#000', startingDay: i === 0, endingDay: cur.getTime() >= last.getTime() };
+    cur.setDate(cur.getDate() + 1);
+    i++;
+  }
+  return marks;
+}
+
 export default function MyItemsScreen({ navigation }: Props) {
   const [items, setItems] = useState<ItemRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editItem, setEditItem] = useState<ItemRow | null>(null);
+  const [availStart, setAvailStart] = useState<string | null>(null);
+  const [availEnd, setAvailEnd] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,7 +94,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     const [itemsRes, txRes] = await Promise.all([
       supabase
         .from('items')
-        .select('id, title, category, verification_status, daily_price')
+        .select('id, title, category, verification_status, daily_price, available_from, available_to')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -100,6 +123,8 @@ export default function MyItemsScreen({ navigation }: Props) {
     setItems(
       (itemsRes.data as any[]).map(item => ({
         ...item,
+        available_from: item.available_from ?? null,
+        available_to: item.available_to ?? null,
         bookings: txByItem[item.id] ?? [],
       }))
     );
@@ -114,6 +139,40 @@ export default function MyItemsScreen({ navigation }: Props) {
     const pending = item.bookings.find(b => b.status === 'pending');
     if (pending) return { label: `${item.bookings.filter(b => b.status === 'pending').length} pending`, color: '#f0a500' };
     return { label: 'Available', color: '#4cd964' };
+  }
+
+  function openAvailEditor(item: ItemRow) {
+    setEditItem(item);
+    setAvailStart(item.available_from ?? null);
+    setAvailEnd(item.available_to ?? null);
+  }
+
+  function onAvailDayPress(day: { dateString: string }) {
+    const d = day.dateString;
+    if (!availStart || (availStart && availEnd)) {
+      setAvailStart(d);
+      setAvailEnd(null);
+    } else if (d < availStart) {
+      setAvailStart(d);
+      setAvailEnd(null);
+    } else {
+      setAvailEnd(d);
+    }
+  }
+
+  async function saveAvailability() {
+    if (!editItem) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('items')
+      .update({ available_from: availStart, available_to: availEnd })
+      .eq('id', editItem.id);
+    setSaving(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setItems(prev => prev.map(i =>
+      i.id === editItem.id ? { ...i, available_from: availStart, available_to: availEnd } : i
+    ));
+    setEditItem(null);
   }
 
   if (loading) {
@@ -149,16 +208,23 @@ export default function MyItemsScreen({ navigation }: Props) {
             const avail = itemAvailability(item);
             return (
               <View style={styles.card}>
-                <View style={styles.cardHeader}>
+                <TouchableOpacity style={styles.cardHeader} onPress={() => openAvailEditor(item)}>
                   <Text style={styles.emoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
                   <View style={styles.cardMeta}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
                     <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+                    {item.available_from ? (
+                      <Text style={styles.availRange}>
+                        📅 {fmt(item.available_from)}{item.available_to ? ` → ${fmt(item.available_to)}` : '+'}
+                      </Text>
+                    ) : (
+                      <Text style={styles.availRangeMuted}>Tap to set availability</Text>
+                    )}
                   </View>
                   <View style={[styles.availBadge, { backgroundColor: avail.color + '22', borderColor: avail.color }]}>
                     <Text style={[styles.availText, { color: avail.color }]}>{avail.label}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {item.bookings.length > 0 && (
                   <View style={styles.bookingsSection}>
@@ -176,6 +242,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                               conversationId: b.conversation_id,
                               itemTitle: item.title,
                               otherUserName: b.renter_name,
+                              targetTransactionId: b.id,
                             },
                           });
                         }}
@@ -198,6 +265,58 @@ export default function MyItemsScreen({ navigation }: Props) {
           }}
         />
       )}
+
+      {/* Availability date editor modal */}
+      <Modal visible={!!editItem} transparent animationType="slide" onRequestClose={() => setEditItem(null)}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Set Availability</Text>
+            <Text style={styles.sheetSubtitle}>
+              {editItem?.title} · {availStart ? `${fmt(availStart)}${availEnd ? ` → ${fmt(availEnd)}` : ' (pick end)'}` : 'Tap start date'}
+            </Text>
+
+            <Calendar
+              markingType="period"
+              markedDates={buildPeriodMarks(availStart, availEnd)}
+              onDayPress={onAvailDayPress}
+              minDate={new Date().toISOString().split('T')[0]}
+              theme={{
+                backgroundColor: '#242424',
+                calendarBackground: '#242424',
+                textSectionTitleColor: '#666',
+                selectedDayBackgroundColor: '#fff',
+                selectedDayTextColor: '#000',
+                todayTextColor: '#fff',
+                dayTextColor: '#fff',
+                textDisabledColor: '#444',
+                monthTextColor: '#fff',
+                arrowColor: '#fff',
+              }}
+            />
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity style={styles.clearBtn} onPress={() => { setAvailStart(null); setAvailEnd(null); }}>
+                <Text style={styles.clearBtnText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, (!availStart || saving) && styles.saveBtnDisabled]}
+                onPress={saveAvailability}
+                disabled={!availStart || saving}
+              >
+                {saving
+                  ? <ActivityIndicator color="#000" size="small" />
+                  : <Text style={styles.saveBtnText}>Save</Text>
+                }
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditItem(null)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -225,6 +344,8 @@ const styles = StyleSheet.create({
   cardMeta: { flex: 1 },
   itemTitle: { fontSize: 16, fontWeight: '600', color: '#fff' },
   itemPrice: { fontSize: 13, color: '#888', marginTop: 2 },
+  availRange: { fontSize: 12, color: '#4da6ff', marginTop: 3 },
+  availRangeMuted: { fontSize: 12, color: '#444', marginTop: 3 },
   availBadge: {
     paddingHorizontal: 10, paddingVertical: 4,
     borderRadius: 20, borderWidth: 1,
@@ -245,4 +366,28 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
   emptySubtext: { fontSize: 14, color: '#666' },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#242424', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40, gap: 16,
+  },
+  sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  sheetSubtitle: { fontSize: 13, color: '#888', marginTop: -8 },
+  sheetActions: { flexDirection: 'row', gap: 12 },
+  clearBtn: {
+    flex: 1, height: 48,
+    borderWidth: 1, borderColor: '#444', borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  clearBtnText: { color: '#aaa', fontWeight: '600' },
+  saveBtn: {
+    flex: 2, height: 48, backgroundColor: '#fff',
+    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+  },
+  saveBtnDisabled: { opacity: 0.4 },
+  saveBtnText: { color: '#000', fontWeight: '700', fontSize: 15 },
+  cancelBtn: { height: 44, alignItems: 'center', justifyContent: 'center' },
+  cancelText: { color: '#666', fontSize: 15 },
 });

@@ -85,6 +85,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
+  const [availFrom, setAvailFrom] = useState<string | null>(null);
+  const [availTo, setAvailTo] = useState<string | null>(null);
   const [rentLoading, setRentLoading] = useState(false);
 
   async function openRentModal() {
@@ -96,21 +98,29 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     setSelectedEnd(null);
     setRentModalVisible(true);
 
-    const { data } = await supabase
-      .from('transactions')
-      .select('start_date, end_date')
-      .eq('item_id', item.id)
-      .in('status', ['pending', 'approved', 'active']);
+    const [txRes, itemRes] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('start_date, end_date')
+        .eq('item_id', item.id)
+        .in('status', ['pending', 'approved', 'active']),
+      supabase
+        .from('items')
+        .select('available_from, available_to')
+        .eq('id', item.id)
+        .single(),
+    ]);
 
-    if (data) {
+    if (txRes.data) {
       const blocked = new Set<string>();
-      data.forEach(({ start_date, end_date }) => {
-        datesBetween(
-          start_date.split('T')[0],
-          end_date.split('T')[0],
-        ).forEach(d => blocked.add(d));
+      txRes.data.forEach(({ start_date, end_date }) => {
+        datesBetween(start_date.split('T')[0], end_date.split('T')[0]).forEach(d => blocked.add(d));
       });
       setBlockedDates(blocked);
+    }
+    if (itemRes.data) {
+      setAvailFrom(itemRes.data.available_from ?? null);
+      setAvailTo(itemRes.data.available_to ?? null);
     }
   }
 
@@ -361,7 +371,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             markingType="period"
             markedDates={markedDates}
             onDayPress={onDayPress}
-            minDate={TODAY}
+            minDate={availFrom ?? TODAY}
+            maxDate={availTo ?? undefined}
             theme={{
               backgroundColor: '#1a1a1a',
               calendarBackground: '#1a1a1a',

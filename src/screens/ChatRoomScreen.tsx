@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -37,7 +37,7 @@ const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 
 export default function ChatRoomScreen({ navigation, route }: Props) {
-  const { conversationId, itemTitle, otherUserName, initialText } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId } = route.params;
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState(initialText ?? '');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -49,6 +49,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [payLoading, setPayLoading] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const flatListRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -130,6 +131,24 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       channelRef.current?.unsubscribe();
     };
   }, [conversationId]);
+
+  // After messages + transactions load, scroll to the target rental request card
+  useEffect(() => {
+    if (loading || !targetTransactionId || messages.length === 0) return;
+    const tx = transactions[targetTransactionId];
+    let idx = messages.findIndex(m => m.transaction_id === targetTransactionId);
+    if (idx < 0 && tx) {
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const d = new Date(tx.start_date);
+      const token = `${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`;
+      idx = messages.findIndex(m => m.content.startsWith(RENTAL_REQUEST_PREFIX) && m.content.includes(token));
+    }
+    if (idx >= 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
+      }, 350);
+    }
+  }, [loading]);
 
   async function markAsRead(userId: string) {
     const { data: conv } = await supabase
@@ -266,10 +285,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         [transactionId]: { ...prev[transactionId], status: 'active' },
       }));
 
+      const paidTx = transactions[transactionId];
+      const paidDateRef = paidTx ? ` (${formatDateRange(paidTx)})` : '';
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: (await supabase.auth.getUser()).data.user?.id,
-        content: '💳 Payment completed! The rental is now active.',
+        content: `💳 Payment completed${paidDateRef}! The rental is now active.`,
       });
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -405,11 +426,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           <ActivityIndicator color="#fff" style={{ flex: 1 }} />
         ) : (
           <FlatList
+            ref={flatListRef}
             data={messages}
             keyExtractor={(m) => m.id}
             inverted
             contentContainerStyle={styles.messageList}
             renderItem={renderMessage}
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              flatListRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: true });
+            }}
           />
         )}
 
