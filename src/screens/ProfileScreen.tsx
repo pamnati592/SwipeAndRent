@@ -130,6 +130,12 @@ export default function ProfileScreen() {
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('MyRentals')}>
+          <Text style={styles.menuIcon}>📋</Text>
+          <Text style={styles.menuLabel}>My Rentals</Text>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem} onPress={() => setSwitchModal(true)}>
           <Text style={styles.menuIcon}>🔀</Text>
           <Text style={styles.menuLabel}>Switch User</Text>

@@ -24,6 +24,7 @@ type Transaction = {
   start_date: string;
   end_date: string;
   total_price: number;
+  approved_at?: string | null;
 };
 
 type ConversationInfo = {
@@ -70,7 +71,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           .single(),
         supabase
           .from('transactions')
-          .select('id, status, start_date, end_date, total_price')
+          .select('id, status, start_date, end_date, total_price, approved_at')
           .eq('conversation_id', conversationId),
       ]);
 
@@ -90,7 +91,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       if (missingIds.length > 0) {
         const { data: extra } = await supabase
           .from('transactions')
-          .select('id, status, start_date, end_date, total_price')
+          .select('id, status, start_date, end_date, total_price, approved_at')
           .in('id', missingIds);
         (extra as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
       }
@@ -113,7 +114,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             if (newMsg.transaction_id) {
               const { data: tx } = await supabase
                 .from('transactions')
-                .select('id, status, start_date, end_date, total_price')
+                .select('id, status, start_date, end_date, total_price, approved_at')
                 .eq('id', newMsg.transaction_id)
                 .single();
               if (tx && mounted) setTransactions((prev) => ({ ...prev, [(tx as Transaction).id]: tx as Transaction }));
@@ -170,13 +171,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   async function handleApprove(transactionId: string) {
     setActionLoading(true);
     try {
+      const approvedAt = new Date().toISOString();
       const { error } = await supabase
         .from('transactions')
-        .update({ status: 'approved' })
+        .update({ status: 'approved', approved_at: approvedAt })
         .eq('id', transactionId);
       if (error) throw error;
 
-      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'approved' } }));
+      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'approved', approved_at: approvedAt } }));
 
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
@@ -334,18 +336,28 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 <View style={styles.approvedRow}>
                   <Text style={styles.statusApproved}>✅ Approved</Text>
                   {!isLender && (
-                    <TouchableOpacity
-                      style={[styles.payBtn, payLoading && styles.btnDisabled]}
-                      onPress={() => handlePay(tx.id)}
-                      disabled={payLoading}
-                    >
-                      {payLoading
-                        ? <ActivityIndicator color="#000" size="small" />
-                        : <Text style={styles.payBtnText}>💳 Pay Now</Text>
-                      }
-                    </TouchableOpacity>
+                    tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000
+                      ? <Text style={styles.statusExpired}>⏱ Time exceeded</Text>
+                      : (
+                        <TouchableOpacity
+                          style={[styles.payBtn, payLoading && styles.btnDisabled]}
+                          onPress={() => handlePay(tx.id)}
+                          disabled={payLoading}
+                        >
+                          {payLoading
+                            ? <ActivityIndicator color="#000" size="small" />
+                            : <Text style={styles.payBtnText}>💳 Pay Now</Text>
+                          }
+                        </TouchableOpacity>
+                      )
                   )}
                 </View>
+              )}
+              {tx.status === 'active' && (
+                <Text style={styles.statusActive}>🔑 Active Rental</Text>
+              )}
+              {tx.status === 'completed' && (
+                <Text style={styles.statusCompleted}>✓ Completed</Text>
               )}
               {tx.status === 'rejected' && (
                 <Text style={styles.statusRejected}>❌ Declined</Text>
@@ -479,6 +491,9 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.4 },
   approvedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statusApproved: { color: '#4caf50', fontWeight: '600', fontSize: 14 },
+  statusActive: { color: '#4da6ff', fontWeight: '600', fontSize: 14 },
+  statusCompleted: { color: '#666', fontWeight: '600', fontSize: 14 },
+  statusExpired: { color: '#f0a500', fontWeight: '600', fontSize: 13 },
   statusRejected: { color: '#f44336', fontWeight: '600', fontSize: 14 },
   payBtn: {
     backgroundColor: '#fff', borderRadius: 8,
