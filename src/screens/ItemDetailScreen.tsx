@@ -85,8 +85,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
-  const [availFrom, setAvailFrom] = useState<string | null>(null);
-  const [availTo, setAvailTo] = useState<string | null>(null);
   const [rentLoading, setRentLoading] = useState(false);
 
   async function openRentModal() {
@@ -98,30 +96,26 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     setSelectedEnd(null);
     setRentModalVisible(true);
 
-    const [txRes, itemRes] = await Promise.all([
+    const [txRes, manualRes] = await Promise.all([
       supabase
         .from('transactions')
         .select('start_date, end_date')
         .eq('item_id', item.id)
         .in('status', ['pending', 'approved', 'active']),
       supabase
-        .from('items')
-        .select('available_from, available_to')
-        .eq('id', item.id)
-        .single(),
+        .from('item_blocked_dates')
+        .select('blocked_from, blocked_to')
+        .eq('item_id', item.id),
     ]);
 
-    if (txRes.data) {
-      const blocked = new Set<string>();
-      txRes.data.forEach(({ start_date, end_date }) => {
-        datesBetween(start_date.split('T')[0], end_date.split('T')[0]).forEach(d => blocked.add(d));
-      });
-      setBlockedDates(blocked);
-    }
-    if (itemRes.data) {
-      setAvailFrom(itemRes.data.available_from ?? null);
-      setAvailTo(itemRes.data.available_to ?? null);
-    }
+    const blocked = new Set<string>();
+    (txRes.data ?? []).forEach(({ start_date, end_date }) => {
+      datesBetween(start_date.split('T')[0], end_date.split('T')[0]).forEach(d => blocked.add(d));
+    });
+    (manualRes.data ?? []).forEach(({ blocked_from, blocked_to }) => {
+      datesBetween(blocked_from, blocked_to).forEach(d => blocked.add(d));
+    });
+    setBlockedDates(blocked);
   }
 
   function onDayPress(day: { dateString: string }) {
@@ -371,8 +365,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             markingType="period"
             markedDates={markedDates}
             onDayPress={onDayPress}
-            minDate={availFrom ?? TODAY}
-            maxDate={availTo ?? undefined}
+            minDate={TODAY}
             theme={{
               backgroundColor: '#1a1a1a',
               calendarBackground: '#1a1a1a',
