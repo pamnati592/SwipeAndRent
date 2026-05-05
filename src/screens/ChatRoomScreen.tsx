@@ -161,6 +161,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     setSending(false);
   }
 
+  function formatDateRange(tx: Transaction): string {
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return `${fmt(tx.start_date)} → ${fmt(tx.end_date)}`;
+  }
+
   async function handleApprove(transactionId: string) {
     setActionLoading(true);
     try {
@@ -172,10 +178,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'approved' } }));
 
+      const tx = transactions[transactionId];
+      const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
-        content: '✅ Request approved! Payment is due within 24 hours.',
+        content: `✅ Request approved${dateRef}! Payment is due within 24 hours.`,
       });
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -195,10 +203,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'rejected' } }));
 
+      const tx = transactions[transactionId];
+      const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
       await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: currentUserId,
-        content: '❌ Request declined.',
+        content: `❌ Request declined${dateRef}.`,
       });
     } catch (e: any) {
       Alert.alert('Error', e.message);
