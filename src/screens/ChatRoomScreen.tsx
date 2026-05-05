@@ -8,6 +8,7 @@ import { useStripe } from '@stripe/stripe-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
+import { chatBus } from '../services/chatBus';
 
 type Message = {
   id: string;
@@ -74,23 +75,59 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       ]);
 
       if (!mounted) return;
-      if (messagesRes.data) setMessages(messagesRes.data as Message[]);
+      const msgs = (messagesRes.data ?? []) as Message[];
+      if (msgs.length) setMessages(msgs);
       if (convRes.data) setConvInfo(convRes.data as ConversationInfo);
-      if (txRes.data) {
-        const map: Record<string, Transaction> = {};
-        (txRes.data as Transaction[]).forEach(tx => { map[tx.id] = tx; });
-        setTransactions(map);
+
+      console.log('[ChatRoom] user:', user.id);
+      console.log('[ChatRoom] convInfo:', convRes.data);
+      console.log('[ChatRoom] txRes by conversation_id:', txRes.data, 'error:', txRes.error);
+      console.log('[ChatRoom] msgs with transaction_id:', msgs.filter(m => m.transaction_id).map(m => ({ id: m.id, transaction_id: m.transaction_id })));
+
+      const map: Record<string, Transaction> = {};
+      (txRes.data as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
+
+      const missingIds = msgs
+        .map(m => m.transaction_id)
+        .filter((id): id is string => !!id && !map[id]);
+      console.log('[ChatRoom] missingIds to fetch:', missingIds);
+
+      if (missingIds.length > 0) {
+        const { data: extra, error: extraErr } = await supabase
+          .from('transactions')
+          .select('id, status, start_date, end_date, total_price')
+          .in('id', missingIds);
+        console.log('[ChatRoom] extra tx fetch:', extra, 'error:', extraErr);
+        (extra as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
       }
+
+      console.log('[ChatRoom] final tx map keys:', Object.keys(map));
+      setTransactions(map);
       setLoading(false);
 
       await markAsRead(user.id);
+      chatBus.notify();
 
       channelRef.current = supabase
         .channel(`messages:${conversationId}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
-          (payload) => { if (mounted) setMessages((prev) => [payload.new as Message, ...prev]); }
+          async (payload) => {
+            if (!mounted) return;
+            const newMsg = payload.new as Message;
+            console.log('[ChatRoom] realtime new message:', { id: newMsg.id, transaction_id: newMsg.transaction_id });
+            setMessages((prev) => [newMsg, ...prev]);
+            if (newMsg.transaction_id) {
+              const { data: tx, error: txErr } = await supabase
+                .from('transactions')
+                .select('id, status, start_date, end_date, total_price')
+                .eq('id', newMsg.transaction_id)
+                .single();
+              console.log('[ChatRoom] realtime tx fetch:', tx, 'error:', txErr);
+              if (tx && mounted) setTransactions((prev) => ({ ...prev, [(tx as Transaction).id]: tx as Transaction }));
+            }
+          }
         )
         .subscribe();
     }

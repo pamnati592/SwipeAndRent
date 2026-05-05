@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
   ActivityIndicator, Modal,
@@ -30,6 +30,23 @@ export default function ProfileScreen() {
   const [loading, setLoading]         = useState(false);
   const [switchModal, setSwitchModal] = useState(false);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const [currentName, setCurrentName]   = useState<string | null>(null);
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null);
+
+  // Derived from session — eliminates AsyncStorage race condition on user switch
+  const activeLabel = TEST_ACCOUNTS.find(a => a.email === currentEmail)?.label ?? null;
+
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentEmail(user.email ?? null);
+        const { data } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+        setCurrentName(data?.full_name ?? null);
+      }
+    }
+    loadCurrentUser();
+  }, []);
 
   async function handleLogout() {
     Alert.alert('Log out', 'Are you sure?', [
@@ -89,6 +106,23 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Profile</Text>
 
+      <View style={styles.userCard}>
+        <View style={styles.userAvatar}>
+          <Text style={styles.userAvatarText}>
+            {(currentName ?? activeLabel ?? '?').charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{currentName ?? activeLabel ?? 'Unknown'}</Text>
+          <Text style={styles.userEmail} numberOfLines={1}>{currentEmail ?? ''}</Text>
+        </View>
+        {activeLabel && (
+          <View style={styles.activeTag}>
+            <Text style={styles.activeTagText}>Active</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.menu}>
         <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('MyItems')}>
           <Text style={styles.menuIcon}>📦</Text>
@@ -123,29 +157,39 @@ export default function ProfileScreen() {
             <Text style={styles.sheetTitle}>Switch User</Text>
             <Text style={styles.sheetSubtitle}>First switch signs in once — after that it's instant</Text>
 
-            {TEST_ACCOUNTS.map(account => (
-              <TouchableOpacity
-                key={account.label}
-                style={[styles.accountBtn, switchingTo === account.label && styles.accountBtnLoading]}
-                onPress={() => switchTo(account.label, account.email, account.password)}
-                disabled={!!switchingTo}
-              >
-                {switchingTo === account.label
-                  ? <ActivityIndicator color="#000" size="small" />
-                  : (
-                    <>
-                      <View style={styles.accountAvatar}>
-                        <Text style={styles.accountAvatarText}>{account.label.charAt(0).toUpperCase()}</Text>
-                      </View>
-                      <Text style={styles.accountLabel}>{account.label}</Text>
-                      <Text style={styles.accountEmail} numberOfLines={1}>
-                        {account.email || 'Not configured'}
-                      </Text>
-                    </>
-                  )
-                }
-              </TouchableOpacity>
-            ))}
+            {TEST_ACCOUNTS.map(account => {
+              const isActive = account.label === activeLabel;
+              return (
+                <TouchableOpacity
+                  key={account.label}
+                  style={[
+                    styles.accountBtn,
+                    isActive && styles.accountBtnActive,
+                    switchingTo === account.label && styles.accountBtnLoading,
+                  ]}
+                  onPress={() => switchTo(account.label, account.email, account.password)}
+                  disabled={!!switchingTo}
+                >
+                  {switchingTo === account.label
+                    ? <ActivityIndicator color="#000" size="small" />
+                    : (
+                      <>
+                        <View style={[styles.accountAvatar, isActive && styles.accountAvatarActive]}>
+                          <Text style={styles.accountAvatarText}>{account.label.charAt(0).toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.accountLabel}>{account.label}</Text>
+                          <Text style={styles.accountEmail} numberOfLines={1}>
+                            {account.email || 'Not configured'}
+                          </Text>
+                        </View>
+                        {isActive && <Text style={styles.activeDot}>● Active</Text>}
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+              );
+            })}
 
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setSwitchModal(false)}>
               <Text style={styles.cancelText}>Cancel</Text>
@@ -160,6 +204,27 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a1a1a', paddingHorizontal: 20 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#fff', paddingTop: 16, paddingBottom: 20 },
+
+  userCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: '#242424', borderRadius: 16,
+    paddingHorizontal: 16, paddingVertical: 16,
+    borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 20,
+  },
+  userAvatar: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+  },
+  userAvatarText: { fontSize: 20, fontWeight: '700', color: '#000' },
+  userInfo: { flex: 1 },
+  userName: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  userEmail: { fontSize: 13, color: '#666', marginTop: 2 },
+  activeTag: {
+    backgroundColor: '#1a3a1a', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: '#2a5a2a',
+  },
+  activeTagText: { fontSize: 12, color: '#4caf50', fontWeight: '600' },
 
   menu: { gap: 8 },
   menuItem: {
@@ -197,13 +262,16 @@ const styles = StyleSheet.create({
     minHeight: 56, justifyContent: 'center',
   },
   accountBtnLoading: { opacity: 0.6 },
+  accountBtnActive: { borderColor: '#4caf50', backgroundColor: '#1a2a1a' },
   accountAvatar: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center',
   },
+  accountAvatarActive: { backgroundColor: '#4caf50' },
   accountAvatarText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  accountLabel: { fontSize: 16, fontWeight: '600', color: '#fff', flex: 1 },
-  accountEmail: { fontSize: 12, color: '#666', maxWidth: 160 },
+  accountLabel: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  accountEmail: { fontSize: 12, color: '#666', marginTop: 2 },
+  activeDot: { fontSize: 12, color: '#4caf50', fontWeight: '600' },
 
   cancelBtn: { height: 48, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   cancelText: { color: '#fff', fontSize: 15 },
