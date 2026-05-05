@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStripe } from '@stripe/stripe-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
@@ -43,6 +44,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [convInfo, setConvInfo] = useState<ConversationInfo | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
@@ -176,6 +179,65 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  async function handlePay(transactionId: string) {
+    setPayLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      // Call Edge Function to create a PaymentIntent server-side
+      const res = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ transaction_id: transactionId }),
+        }
+      );
+      const { client_secret, error: fnError } = await res.json();
+      if (fnError) throw new Error(fnError);
+
+      // Initialise the payment sheet with the client secret
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: 'SwipeAndRent',
+        paymentIntentClientSecret: client_secret,
+        defaultBillingDetails: { name: '' },
+      });
+      if (initError) throw new Error(initError.message);
+
+      // Present the payment sheet to the user
+      const { error: presentError } = await presentPaymentSheet();
+      if (presentError) {
+        if (presentError.code !== 'Canceled') Alert.alert('Payment failed', presentError.message);
+        return;
+      }
+
+      // Payment succeeded — update transaction status to active
+      await supabase
+        .from('transactions')
+        .update({ status: 'active' })
+        .eq('id', transactionId);
+
+      setTransactions(prev => ({
+        ...prev,
+        [transactionId]: { ...prev[transactionId], status: 'active' },
+      }));
+
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        sender_id: (await supabase.auth.getUser()).data.user?.id,
+        content: '💳 Payment completed! The rental is now active.',
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setPayLoading(false);
+    }
+  }
+
   function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -216,7 +278,21 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 </View>
               )}
               {tx.status === 'approved' && (
-                <Text style={styles.statusApproved}>✅ Approved</Text>
+                <View style={styles.approvedRow}>
+                  <Text style={styles.statusApproved}>✅ Approved</Text>
+                  {!isLender && (
+                    <TouchableOpacity
+                      style={[styles.payBtn, payLoading && styles.btnDisabled]}
+                      onPress={() => handlePay(tx.id)}
+                      disabled={payLoading}
+                    >
+                      {payLoading
+                        ? <ActivityIndicator color="#000" size="small" />
+                        : <Text style={styles.payBtnText}>💳 Pay Now</Text>
+                      }
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
               {tx.status === 'rejected' && (
                 <Text style={styles.statusRejected}>❌ Declined</Text>
@@ -348,8 +424,14 @@ const styles = StyleSheet.create({
   },
   rejectBtnText: { color: '#aaa', fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.4 },
+  approvedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statusApproved: { color: '#4caf50', fontWeight: '600', fontSize: 14 },
   statusRejected: { color: '#f44336', fontWeight: '600', fontSize: 14 },
+  payBtn: {
+    backgroundColor: '#fff', borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  payBtnText: { color: '#000', fontWeight: '700', fontSize: 13 },
   requestTime: { color: '#555', fontSize: 11, textAlign: 'right' },
 
   inputRow: {

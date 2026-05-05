@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.swipeandrentapp",
+      "bundleIdentifier": "com.swipeandrentapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,6 +35,13 @@
           "cameraPermission": "SwipeAndRent needs camera access to take photos of your items.",
           "microphonePermission": false,
           "photosPermission": "SwipeAndRent needs photo library access to select item photos."
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.swipeandrentapp",
+          "enableGooglePay": false
         }
       ]
     ]
