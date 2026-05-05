@@ -79,29 +79,22 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       if (msgs.length) setMessages(msgs);
       if (convRes.data) setConvInfo(convRes.data as ConversationInfo);
 
-      console.log('[ChatRoom] user:', user.id);
-      console.log('[ChatRoom] convInfo:', convRes.data);
-      console.log('[ChatRoom] txRes by conversation_id:', txRes.data, 'error:', txRes.error);
-      console.log('[ChatRoom] msgs with transaction_id:', msgs.filter(m => m.transaction_id).map(m => ({ id: m.id, transaction_id: m.transaction_id })));
-
       const map: Record<string, Transaction> = {};
       (txRes.data as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
 
+      // Also fetch any transactions linked via message.transaction_id that the
+      // conversation_id query may have missed (e.g. older rows without conversation_id)
       const missingIds = msgs
         .map(m => m.transaction_id)
         .filter((id): id is string => !!id && !map[id]);
-      console.log('[ChatRoom] missingIds to fetch:', missingIds);
-
       if (missingIds.length > 0) {
-        const { data: extra, error: extraErr } = await supabase
+        const { data: extra } = await supabase
           .from('transactions')
           .select('id, status, start_date, end_date, total_price')
           .in('id', missingIds);
-        console.log('[ChatRoom] extra tx fetch:', extra, 'error:', extraErr);
         (extra as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
       }
 
-      console.log('[ChatRoom] final tx map keys:', Object.keys(map));
       setTransactions(map);
       setLoading(false);
 
@@ -116,15 +109,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           async (payload) => {
             if (!mounted) return;
             const newMsg = payload.new as Message;
-            console.log('[ChatRoom] realtime new message:', { id: newMsg.id, transaction_id: newMsg.transaction_id });
             setMessages((prev) => [newMsg, ...prev]);
             if (newMsg.transaction_id) {
-              const { data: tx, error: txErr } = await supabase
+              const { data: tx } = await supabase
                 .from('transactions')
                 .select('id, status, start_date, end_date, total_price')
                 .eq('id', newMsg.transaction_id)
                 .single();
-              console.log('[ChatRoom] realtime tx fetch:', tx, 'error:', txErr);
               if (tx && mounted) setTransactions((prev) => ({ ...prev, [(tx as Transaction).id]: tx as Transaction }));
             }
           }
@@ -281,12 +272,27 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
   const isLender = convInfo?.lender_id === currentUserId;
 
+  // When messages lack transaction_id (RPC deployed before column existed),
+  // fall back to matching the transaction by the start date embedded in the message text.
+  function findTxForMessage(msg: Message): Transaction | null {
+    if (msg.transaction_id) return transactions[msg.transaction_id] ?? null;
+    const match = msg.content.match(/(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/);
+    if (!match) return null;
+    const day = parseInt(match[1]);
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const month = monthNames.indexOf(match[2]);
+    return Object.values(transactions).find(tx => {
+      const d = new Date(tx.start_date);
+      return d.getUTCDate() === day && d.getUTCMonth() === month;
+    }) ?? null;
+  }
+
   function renderMessage({ item: msg }: { item: Message }) {
     const isMe = msg.sender_id === currentUserId;
     const isRentalRequest = msg.content.startsWith(RENTAL_REQUEST_PREFIX);
 
     if (isRentalRequest) {
-      const tx = msg.transaction_id ? transactions[msg.transaction_id] : null;
+      const tx = findTxForMessage(msg);
       return (
         <View style={styles.requestCard}>
           <Text style={styles.requestText}>{msg.content}</Text>
