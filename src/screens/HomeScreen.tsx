@@ -45,11 +45,16 @@ export default function HomeScreen({ navigation }: Props) {
 
   useEffect(() => {
     async function fetchItems() {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      const query = supabase
         .from('items')
         .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
-        .eq('verification_status', 'live');
+        .eq('verification_status', 'live')
+        .eq('is_hidden', false);
 
+      if (user) query.neq('owner_id', user.id);
+
+      const { data, error } = await query;
       if (!error && data) setItems(data as Item[]);
       setLoading(false);
     }

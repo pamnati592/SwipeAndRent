@@ -76,11 +76,24 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const photos = item.photos?.filter(Boolean) ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
+  const [ownerName, setOwnerName] = useState<string | null>(null);
+  const [ownerCity, setOwnerCity] = useState<string | null>(null);
 
   const [rentModalVisible, setRentModalVisible] = useState(false);
 
   useEffect(() => {
     if (openRent) openRentModal();
+    supabase
+      .from('profiles')
+      .select('full_name, city')
+      .eq('id', item.owner_id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setOwnerName((data as any).full_name ?? null);
+          setOwnerCity((data as any).city ?? null);
+        }
+      });
   }, []);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
@@ -283,6 +296,22 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           <View style={styles.details}>
             <Text style={styles.title}>{item.title}</Text>
 
+            {ownerName && (
+              <TouchableOpacity
+                style={styles.ownerRow}
+                onPress={() => navigation.navigate('PublicProfile', { userId: item.owner_id, userName: ownerName })}
+              >
+                <View style={styles.ownerAvatar}>
+                  <Text style={styles.ownerInitial}>{ownerName.charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={styles.ownerInfo}>
+                  <Text style={styles.ownerLabel}>Listed by</Text>
+                  <Text style={styles.ownerName}>{ownerName}{ownerCity ? ` · ${ownerCity}` : ''}</Text>
+                </View>
+                <Text style={styles.ownerChevron}>›</Text>
+              </TouchableOpacity>
+            )}
+
             <View style={styles.metaRow}>
               <Text style={styles.price}>₪{item.daily_price}/day</Text>
               {item.sale_price != null && (
@@ -443,6 +472,21 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#3a3a3a',
   },
   tagText: { color: '#aaa', fontSize: 13 },
+
+  ownerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+    backgroundColor: '#242424', borderRadius: 12,
+  },
+  ownerAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center',
+  },
+  ownerInitial: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  ownerInfo: { flex: 1 },
+  ownerLabel: { color: '#666', fontSize: 11 },
+  ownerName: { color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 1 },
+  ownerChevron: { color: '#666', fontSize: 22, lineHeight: 24 },
 
   sectionLabel: { fontSize: 13, color: '#666', marginTop: 8 },
   description: { fontSize: 15, color: '#ccc', lineHeight: 22 },
