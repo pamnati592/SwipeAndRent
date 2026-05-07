@@ -24,7 +24,7 @@ function keywordFallback(query: string, items: Item[]): { item_id: string; reaso
 
   const categoryAliases: Record<string, string[]> = {
     gaming: ['game', 'games', 'play', 'console', 'playstation', 'xbox', 'nintendo', 'video', 'mortal', 'kombat', 'ps5', 'ps4'],
-    photography: ['photo', 'camera', 'shoot', 'picture', 'lens'],
+    photography: ['photo', 'camera', 'shoot', 'picture', 'pictures', 'lens', 'capture', 'shoot'],
     camping: ['camp', 'tent', 'outdoor', 'hike', 'hiking', 'nature', 'forest', 'mountain'],
     diy: ['drill', 'tool', 'fix', 'build', 'repair', 'power', 'bosch'],
     music: ['guitar', 'drum', 'instrument', 'band', 'song', 'play'],
@@ -130,23 +130,25 @@ Return ONLY a valid JSON array with no markdown, no code fences, no extra text. 
     let ranked: { item_id: string; reason: string; score: number }[] = [];
     let usedFallback = false;
 
-    const geminiKey = Deno.env.get('GEMINI_KEY');
-    if (geminiKey) {
+    const groqKey = Deno.env.get('GROQ_KEY');
+    if (groqKey) {
       try {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-            }),
-          }
-        );
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.1,
+            max_tokens: 1024,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
 
-        const geminiData = await geminiRes.json();
-        const rawText: string = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const groqData = await groqRes.json();
+        const rawText: string = groqData?.choices?.[0]?.message?.content ?? '';
 
         if (rawText) {
           const cleaned = rawText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
@@ -156,7 +158,7 @@ Return ONLY a valid JSON array with no markdown, no code fences, no extra text. 
           }
         }
       } catch {
-        // Gemini failed — fall through to keyword fallback
+        // Groq failed — fall through to keyword fallback
       }
     }
 
