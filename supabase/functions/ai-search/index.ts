@@ -6,6 +6,56 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type Item = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  city: string | null;
+  daily_price: number;
+  photos: string[] | null;
+  owner_id: string;
+};
+
+// Fallback: score items by keyword overlap with the query
+function keywordFallback(query: string, items: Item[]): { item_id: string; reason: string; score: number }[] {
+  const stopWords = new Set(['i', 'a', 'the', 'to', 'and', 'or', 'for', 'of', 'in', 'want', 'need', 'maybe', 'some', 'with', 'my']);
+  const words = query.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !stopWords.has(w));
+
+  const categoryAliases: Record<string, string[]> = {
+    gaming: ['game', 'games', 'play', 'console', 'playstation', 'xbox', 'nintendo', 'video', 'mortal', 'kombat', 'ps5', 'ps4'],
+    photography: ['photo', 'camera', 'shoot', 'picture', 'lens'],
+    camping: ['camp', 'tent', 'outdoor', 'hike', 'hiking', 'nature', 'forest', 'mountain'],
+    diy: ['drill', 'tool', 'fix', 'build', 'repair', 'power', 'bosch'],
+    music: ['guitar', 'drum', 'instrument', 'band', 'song', 'play'],
+    sports: ['sport', 'bike', 'bicycle', 'cycle', 'ball', 'run', 'gym'],
+  };
+
+  return items
+    .map(item => {
+      const haystack = [item.title, item.description ?? '', item.category, item.city ?? ''].join(' ').toLowerCase();
+      let score = 0;
+
+      // Direct word match in item text
+      for (const word of words) {
+        if (haystack.includes(word)) score += 20;
+      }
+
+      // Category alias match
+      const aliases = categoryAliases[item.category] ?? [];
+      for (const word of words) {
+        if (aliases.includes(word)) score += 30;
+      }
+      // Bonus if query words match the category name itself
+      if (words.includes(item.category)) score += 25;
+
+      return { item_id: item.id, score, reason: `Matches your search for "${words.slice(0, 3).join(', ')}"` };
+    })
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -50,11 +100,7 @@ serve(async (req) => {
       });
     }
 
-    const dateContext = start_date && end_date
-      ? `The user needs the item from ${start_date} to ${end_date}.`
-      : '';
-
-    const itemsSummary = items.map(item => ({
+    const itemsSummary = items.map((item: Item) => ({
       id: item.id,
       title: item.title,
       description: item.description ?? '',
@@ -62,6 +108,10 @@ serve(async (req) => {
       city: item.city ?? '',
       daily_price: item.daily_price,
     }));
+
+    const dateContext = start_date && end_date
+      ? `The user needs the item from ${start_date} to ${end_date}.`
+      : '';
 
     const prompt = `You are a rental marketplace assistant helping users find equipment to rent.
 
@@ -77,39 +127,50 @@ For each result return exactly: item_id (string), reason (one short sentence exp
 Return ONLY a valid JSON array with no markdown, no code fences, no extra text. Example:
 [{"item_id":"abc","reason":"Great tent for a weekend camping trip","score":92}]`;
 
-    const geminiKey = Deno.env.get('GEMINI_KEY');
-    if (!geminiKey) throw new Error('GEMINI_KEY secret is not configured');
-
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-        }),
-      }
-    );
-
-    const geminiData = await geminiRes.json();
-    const rawText: string = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
-    const cleaned = rawText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-
     let ranked: { item_id: string; reason: string; score: number }[] = [];
-    try {
-      ranked = JSON.parse(cleaned);
-      if (!Array.isArray(ranked)) ranked = [];
-    } catch {
-      ranked = [];
+    let usedFallback = false;
+
+    const geminiKey = Deno.env.get('GEMINI_KEY');
+    if (geminiKey) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+            }),
+          }
+        );
+
+        const geminiData = await geminiRes.json();
+        const rawText: string = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+        if (rawText) {
+          const cleaned = rawText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleaned);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            ranked = parsed;
+          }
+        }
+      } catch {
+        // Gemini failed — fall through to keyword fallback
+      }
     }
 
-    const itemMap: Record<string, typeof items[0]> = Object.fromEntries(items.map(i => [i.id, i]));
+    if (ranked.length === 0) {
+      ranked = keywordFallback(query, items as Item[]);
+      usedFallback = true;
+    }
+
+    const itemMap: Record<string, Item> = Object.fromEntries((items as Item[]).map(i => [i.id, i]));
     const results = ranked
       .filter(r => itemMap[r.item_id])
       .map(r => ({ ...itemMap[r.item_id], reason: r.reason, score: r.score }));
 
-    return new Response(JSON.stringify({ results }), {
+    return new Response(JSON.stringify({ results, ai_powered: !usedFallback }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
