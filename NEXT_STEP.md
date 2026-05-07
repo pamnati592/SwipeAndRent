@@ -43,7 +43,25 @@ After results are shown, each card should have a checkbox the user can tick manu
 
 ## Backlog (unchanged from previous session)
 
-### C. Wishlist page
+### C. My Items — "Manage Item" calendar view
+Replace the current separate "🚫 Blocked dates" button with a single **"Manage Item"** button that opens a full-screen calendar showing the item's complete date picture in one place:
+
+**Calendar markings (color-coded):**
+- 🔴 **Rented** — dates covered by approved or active transactions (from `transactions` table where `status IN ('approved', 'active')`)
+- 🟠 **Blocked** — dates manually blocked by the owner (from `item_blocked_dates` table)
+- A small caption label under each marked period: "Rented" / "Blocked"
+
+**Actions from this screen:**
+- Owner can tap any unmarked date range to add a blocked period (same logic as current blocked-dates editor)
+- Owner can tap an existing blocked range to delete it
+- Rented ranges are read-only (can't be deleted from here — only cancellation flow removes them)
+
+**Implementation notes:**
+- Use `react-native-calendars` with `markingType='custom'` or `'period'` and dot markers for captions
+- Fetch both `transactions` (start_date/end_date where status is approved/active) and `item_blocked_dates` in a single screen load
+- Replace the existing `BlockedDatesModal` — this new screen supersedes it entirely
+
+### D. Wishlist page
 - Add a dedicated Wishlist screen under the Profile tab
 - Needs a `wishlist` table (user_id, item_id) in Supabase
 - Screen lists saved items as tappable cards
