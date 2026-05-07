@@ -30,9 +30,15 @@ serve(async (req) => {
       });
     }
 
-    const { data: items, error: itemsError } = await supabase
+    // Use service role to bypass RLS — the caller is already authenticated above
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
+    const { data: items, error: itemsError } = await admin
       .from('items')
-      .select('id, title, description, category, city, daily_price, photos')
+      .select('id, title, description, category, city, daily_price, photos, owner_id')
       .eq('verification_status', 'live')
       .eq('is_hidden', false)
       .neq('owner_id', user.id);
