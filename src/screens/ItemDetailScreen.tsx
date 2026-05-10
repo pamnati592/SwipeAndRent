@@ -72,7 +72,7 @@ function buildMarkedDates(
 }
 
 export default function ItemDetailScreen({ navigation, route }: Props) {
-  const { item, openRent } = route.params;
+  const { item, openRent, prefilledStart, prefilledEnd } = route.params;
   const photos = item.photos?.filter(Boolean) ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
@@ -82,7 +82,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [rentModalVisible, setRentModalVisible] = useState(false);
 
   useEffect(() => {
-    if (openRent) openRentModal();
+    if (openRent || prefilledStart) openRentModal();
     supabase
       .from('profiles')
       .select('full_name, city')
@@ -95,8 +95,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         }
       });
   }, []);
-  const [selectedStart, setSelectedStart] = useState<string | null>(null);
-  const [selectedEnd, setSelectedEnd] = useState<string | null>(null);
+  const [selectedStart, setSelectedStart] = useState<string | null>(prefilledStart ?? null);
+  const [selectedEnd, setSelectedEnd] = useState<string | null>(prefilledEnd ?? null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [rentLoading, setRentLoading] = useState(false);
 
@@ -105,8 +105,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     if (!user) { Alert.alert('Error', 'You must be logged in to rent'); return; }
     if (user.id === item.owner_id) { Alert.alert('Your item', 'You cannot rent your own item'); return; }
 
-    setSelectedStart(null);
-    setSelectedEnd(null);
     setRentModalVisible(true);
 
     const [txRes, manualRes] = await Promise.all([

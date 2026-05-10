@@ -100,7 +100,38 @@ serve(async (req) => {
       });
     }
 
-    const itemsSummary = items.map((item: Item) => ({
+    // Filter out items unavailable for the requested date range
+    let availableItems: Item[] = items as Item[];
+    if (start_date && end_date) {
+      const itemIds = availableItems.map(i => i.id);
+      const [txRes, blockedRes] = await Promise.all([
+        admin
+          .from('transactions')
+          .select('item_id')
+          .in('item_id', itemIds)
+          .in('status', ['pending', 'approved', 'active'])
+          .lte('start_date', end_date)
+          .gte('end_date', start_date),
+        admin
+          .from('item_blocked_dates')
+          .select('item_id')
+          .in('item_id', itemIds)
+          .lte('blocked_from', end_date)
+          .gte('blocked_to', start_date),
+      ]);
+      const conflicting = new Set<string>();
+      (txRes.data ?? []).forEach((r: { item_id: string }) => conflicting.add(r.item_id));
+      (blockedRes.data ?? []).forEach((r: { item_id: string }) => conflicting.add(r.item_id));
+      availableItems = availableItems.filter(i => !conflicting.has(i.id));
+    }
+
+    if (availableItems.length === 0) {
+      return new Response(JSON.stringify({ results: [], ai_powered: false }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const itemsSummary = availableItems.map((item: Item) => ({
       id: item.id,
       title: item.title,
       description: item.description ?? '',
@@ -163,11 +194,11 @@ Return ONLY a valid JSON array with no markdown, no code fences, no extra text. 
     }
 
     if (ranked.length === 0) {
-      ranked = keywordFallback(query, items as Item[]);
+      ranked = keywordFallback(query, availableItems);
       usedFallback = true;
     }
 
-    const itemMap: Record<string, Item> = Object.fromEntries((items as Item[]).map(i => [i.id, i]));
+    const itemMap: Record<string, Item> = Object.fromEntries(availableItems.map(i => [i.id, i]));
     const results = ranked
       .filter(r => itemMap[r.item_id])
       .map(r => ({ ...itemMap[r.item_id], reason: r.reason, score: r.score }));

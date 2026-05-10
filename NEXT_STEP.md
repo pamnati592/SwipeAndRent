@@ -41,6 +41,21 @@ After results are shown, each card should have a checkbox the user can tick manu
 
 ---
 
+## Post-Production / Scale (deferred — requires budget)
+
+### Vector Search for AI Planner
+Currently the edge function fetches **all** live items and sends them to Groq in one prompt. This is a deliberate MVP compromise — it works fine for hundreds of items but will break at scale (context window limits, slow, expensive).
+
+**Future solution (when item count grows):**
+1. Store a `embedding vector(1536)` column on each item (generated at upload time via OpenAI/Groq embeddings)
+2. On search: embed the user's query → run `pgvector` cosine similarity search → retrieve top ~100 semantically similar items
+3. Filter those 100 for date availability
+4. Send only the filtered shortlist to Groq for final ranking
+
+**Stack:** Supabase `pgvector` extension (already available), any embeddings API. Estimated: 1 day of work once item volume justifies it.
+
+---
+
 ## Backlog (unchanged from previous session)
 
 ### C. My Items — "Manage Item" calendar view

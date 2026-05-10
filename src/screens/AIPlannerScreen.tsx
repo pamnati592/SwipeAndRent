@@ -131,6 +131,8 @@ export default function AIPlannerScreen() {
           city: item.city,
           photos: item.photos,
         },
+        prefilledStart: startDate ?? undefined,
+        prefilledEnd: endDate ?? undefined,
       },
     });
   }

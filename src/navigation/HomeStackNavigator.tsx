@@ -6,7 +6,7 @@ import type { Item } from '../types/item';
 
 export type HomeStackParamList = {
   HomeMain: undefined;
-  ItemDetail: { item: Item; openRent?: boolean };
+  ItemDetail: { item: Item; openRent?: boolean; prefilledStart?: string; prefilledEnd?: string };
   PublicProfile: { userId: string; userName: string };
 };
 
