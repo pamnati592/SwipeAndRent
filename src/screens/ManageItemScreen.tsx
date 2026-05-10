@@ -187,9 +187,12 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   }
 
   function confirmCancelRental(rental: RentedRange) {
+    const isPaid = rental.status === 'active';
     Alert.alert(
       'Cancel this rental?',
-      `${rental.renterName}'s booking (${fmt(rental.start)} → ${fmt(rental.end)}) will be cancelled and they will receive a full refund.`,
+      isPaid
+        ? `${rental.renterName}'s booking (${fmt(rental.start)} → ${fmt(rental.end)}) will be cancelled and they will receive a full refund.`
+        : `${rental.renterName}'s booking (${fmt(rental.start)} → ${fmt(rental.end)}) will be cancelled. No payment has been taken yet.`,
       [
         { text: 'Keep booking', style: 'cancel' },
         { text: 'Cancel rental', style: 'destructive', onPress: () => doCancel(rental) },
@@ -198,6 +201,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   }
 
   async function doCancel(rental: RentedRange) {
+    const isPaid = rental.status === 'active';
     const { error } = await supabase
       .from('transactions')
       .update({ status: 'cancelled' })
@@ -208,10 +212,13 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     if (rental.conversationId) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        const msg = isPaid
+          ? `⚠️ Your rental (${fmt(rental.start)} → ${fmt(rental.end)}) has been cancelled by the lender. You will receive a full refund.`
+          : `⚠️ Your booking request (${fmt(rental.start)} → ${fmt(rental.end)}) has been cancelled by the lender. No payment was taken.`;
         await supabase.from('messages').insert({
           conversation_id: rental.conversationId,
           sender_id: user.id,
-          content: `⚠️ Your rental (${fmt(rental.start)} → ${fmt(rental.end)}) has been cancelled by the lender. You will receive a full refund.`,
+          content: msg,
         });
       }
     }
