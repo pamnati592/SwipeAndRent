@@ -79,7 +79,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [ownerName, setOwnerName] = useState<string | null>(null);
   const [ownerCity, setOwnerCity] = useState<string | null>(null);
 
-  const [rentModalVisible, setRentModalVisible] = useState(false);
+  const [rentModalVisible, setRentModalVisible] = useState(!!(prefilledStart || openRent));
 
   useEffect(() => {
     if (openRent || prefilledStart) openRentModal();
@@ -102,8 +102,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
   async function openRentModal() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { Alert.alert('Error', 'You must be logged in to rent'); return; }
-    if (user.id === item.owner_id) { Alert.alert('Your item', 'You cannot rent your own item'); return; }
+    if (!user) { setRentModalVisible(false); Alert.alert('Error', 'You must be logged in to rent'); return; }
+    if (user.id === item.owner_id) { setRentModalVisible(false); Alert.alert('Your item', 'You cannot rent your own item'); return; }
 
     setRentModalVisible(true);
 
