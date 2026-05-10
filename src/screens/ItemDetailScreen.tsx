@@ -248,7 +248,10 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
 
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('HomeMain')}
+        >
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
@@ -389,6 +392,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           </Text>
 
           <Calendar
+            current={selectedStart ?? TODAY}
             markingType="period"
             markedDates={markedDates}
             onDayPress={onDayPress}
