@@ -11,7 +11,7 @@ import ProfileStackNavigator from './ProfileStackNavigator';
 
 export type MainTabParamList = {
   HomeStack: undefined;
-  AIPlanner: undefined;
+  AIPlanner: { plannerUpdate?: { itemId: string; type: 'requested' | 'saved' } } | undefined;
   AddItem: undefined;
   Chats: NavigatorScreenParams<ChatsStackParamList>;
   Profile: undefined;

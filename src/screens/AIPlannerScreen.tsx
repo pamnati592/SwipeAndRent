@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Image, ActivityIndicator, Modal, ScrollView,
@@ -6,13 +6,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
+import type { MainTabParamList } from '../navigation/MainTabNavigator';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   photography: '📷', gaming: '🎮', camping: '⛺',
   diy: '🔧', music: '🎸', sports: '⚽',
 };
+
+type ChecklistStatus = 'dismissed' | 'requested' | 'saved';
 
 type ResultItem = {
   id: string;
@@ -53,7 +56,6 @@ function buildPeriodMarks(start: string, end: string): MarkedDates {
 }
 
 const TODAY = new Date().toISOString().split('T')[0];
-
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function formatDate(d: string | null) {
@@ -62,8 +64,15 @@ function formatDate(d: string | null) {
   return `${parseInt(day)} ${MONTHS[parseInt(m) - 1]}`;
 }
 
+const STATUS_ICON: Record<ChecklistStatus, string> = {
+  requested: '✅',
+  saved: '❤️',
+  dismissed: '✕',
+};
+
 export default function AIPlannerScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<MainTabParamList, 'AIPlanner'>>();
 
   const [query, setQuery] = useState('');
   const [startDate, setStartDate] = useState<string | null>(null);
@@ -72,6 +81,19 @@ export default function AIPlannerScreen() {
   const [pickingStart, setPickingStart] = useState(true);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ResultItem[] | null>(null);
+  const [checklist, setChecklist] = useState<Record<string, ChecklistStatus>>({});
+
+  // Listen for signals from ItemDetailScreen (rental request sent or wishlisted)
+  useEffect(() => {
+    const update = route.params?.plannerUpdate;
+    if (update) {
+      setChecklist(prev => ({ ...prev, [update.itemId]: update.type }));
+    }
+  }, [route.params?.plannerUpdate]);
+
+  function markItem(itemId: string, status: ChecklistStatus) {
+    setChecklist(prev => ({ ...prev, [itemId]: status }));
+  }
 
   function onDayPress(day: { dateString: string }) {
     if (pickingStart) {
@@ -103,6 +125,7 @@ export default function AIPlannerScreen() {
     }
     setLoading(true);
     setResults(null);
+    setChecklist({});
     try {
       const res = await supabase.functions.invoke('ai-search', {
         body: { query: query.trim(), start_date: startDate, end_date: endDate },
@@ -136,6 +159,18 @@ export default function AIPlannerScreen() {
       },
     });
   }
+
+  // Sort: unchecked first, checked items at the bottom
+  const sortedResults = results
+    ? [...results].sort((a, b) => {
+        const aChecked = !!checklist[a.id];
+        const bChecked = !!checklist[b.id];
+        if (aChecked === bChecked) return 0;
+        return aChecked ? 1 : -1;
+      })
+    : null;
+
+  const checkedCount = results ? results.filter(r => !!checklist[r.id]).length : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -196,8 +231,8 @@ export default function AIPlannerScreen() {
             }
           </TouchableOpacity>
 
-          {results !== null && (
-            results.length === 0 ? (
+          {sortedResults !== null && (
+            sortedResults.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyIcon}>🔍</Text>
                 <Text style={styles.emptyText}>No matching items found.</Text>
@@ -205,23 +240,61 @@ export default function AIPlannerScreen() {
               </View>
             ) : (
               <View>
-                <Text style={styles.resultsHeader}>{results.length} result{results.length !== 1 ? 's' : ''}</Text>
-                {results.map(item => (
-                  <TouchableOpacity key={item.id} style={styles.card} onPress={() => openItem(item)}>
-                    <View style={styles.cardMedia}>
-                      {item.photos?.[0]
-                        ? <Image source={{ uri: item.photos[0] }} style={styles.cardImage} />
-                        : <Text style={styles.cardEmoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
-                      }
-                    </View>
-                    <View style={styles.cardBody}>
-                      <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-                      <Text style={styles.cardMeta}>{item.city ?? ''} · ₪{item.daily_price}/day</Text>
-                      <Text style={styles.cardReason} numberOfLines={2}>{item.reason}</Text>
-                    </View>
-                    <Text style={styles.cardArrow}>›</Text>
-                  </TouchableOpacity>
-                ))}
+                <View style={styles.resultsHeaderRow}>
+                  <Text style={styles.resultsHeader}>
+                    {sortedResults.length} result{sortedResults.length !== 1 ? 's' : ''}
+                  </Text>
+                  {checkedCount > 0 && (
+                    <Text style={styles.checkedCount}>{checkedCount} done</Text>
+                  )}
+                </View>
+                {sortedResults.map(item => {
+                  const status = checklist[item.id];
+                  const isDone = !!status;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.card, isDone && styles.cardDone]}
+                      onPress={() => !isDone && openItem(item)}
+                      activeOpacity={isDone ? 1 : 0.7}
+                    >
+                      <View style={styles.cardMedia}>
+                        {item.photos?.[0]
+                          ? <Image source={{ uri: item.photos[0] }} style={styles.cardImage} />
+                          : <Text style={styles.cardEmoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+                        }
+                      </View>
+                      <View style={styles.cardBody}>
+                        <Text style={[styles.cardTitle, isDone && styles.cardTitleDone]} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.cardMeta}>{item.city ?? ''} · ₪{item.daily_price}/day</Text>
+                        {!isDone && (
+                          <Text style={styles.cardReason} numberOfLines={2}>{item.reason}</Text>
+                        )}
+                      </View>
+                      {/* Checkbox area */}
+                      <TouchableOpacity
+                        style={styles.checkboxArea}
+                        onPress={() => isDone
+                          ? setChecklist(prev => { const n = { ...prev }; delete n[item.id]; return n; })
+                          : markItem(item.id, 'dismissed')
+                        }
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        {isDone ? (
+                          <View style={[styles.checkboxDone, status === 'requested' && styles.checkboxRequested, status === 'saved' && styles.checkboxSaved]}>
+                            <Text style={styles.checkboxIcon}>{STATUS_ICON[status]}</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.checkboxEmpty}>
+                            <Text style={styles.checkboxEmptyIcon}>○</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )
           )}
@@ -283,15 +356,9 @@ const styles = StyleSheet.create({
   label: { color: '#888', fontSize: 13, marginBottom: 8 },
   dateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 8 },
   dateBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
-    padding: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#333',
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#2a2a2a', borderRadius: 10, padding: 12, gap: 6,
+    borderWidth: 1, borderColor: '#333',
   },
   dateBtnIcon: { fontSize: 16 },
   dateBtnText: { color: '#fff', fontSize: 14 },
@@ -302,51 +369,56 @@ const styles = StyleSheet.create({
   },
   clearDatesText: { color: '#aaa', fontSize: 14 },
   searchBtn: {
-    backgroundColor: '#8b5cf6',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 28,
+    backgroundColor: '#8b5cf6', borderRadius: 12, padding: 16,
+    alignItems: 'center', marginBottom: 28,
   },
   searchBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  resultsHeader: { color: '#888', fontSize: 13, marginBottom: 12 },
+  resultsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  resultsHeader: { color: '#888', fontSize: 13 },
+  checkedCount: { color: '#555', fontSize: 12 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#242424',
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#333',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#242424', borderRadius: 12, marginBottom: 12,
+    overflow: 'hidden', borderWidth: 1, borderColor: '#333',
   },
+  cardDone: { opacity: 0.4 },
   cardMedia: {
-    width: 80, height: 80,
-    backgroundColor: '#2e2e2e',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80, height: 80, backgroundColor: '#2e2e2e',
+    alignItems: 'center', justifyContent: 'center',
   },
   cardImage: { width: 80, height: 80 },
   cardEmoji: { fontSize: 34 },
   cardBody: { flex: 1, padding: 12 },
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  cardTitleDone: { textDecorationLine: 'line-through', color: '#888' },
   cardMeta: { color: '#888', fontSize: 12, marginBottom: 4 },
   cardReason: { color: '#a78bfa', fontSize: 12, fontStyle: 'italic' },
-  cardArrow: { color: '#555', fontSize: 24, paddingRight: 12 },
+  checkboxArea: {
+    width: 48, alignItems: 'center', justifyContent: 'center', paddingRight: 4,
+  },
+  checkboxEmpty: {
+    width: 28, height: 28, borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#555',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxEmptyIcon: { color: '#555', fontSize: 16, lineHeight: 20 },
+  checkboxDone: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#444', alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxRequested: { backgroundColor: '#1a3a1a' },
+  checkboxSaved: { backgroundColor: '#3a1a2a' },
+  checkboxIcon: { fontSize: 14 },
   emptyState: { alignItems: 'center', paddingTop: 40 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { color: '#fff', fontSize: 17, fontWeight: '600', marginBottom: 6 },
   emptyHint: { color: '#666', fontSize: 14 },
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end',
   },
   calendarSheet: {
-    backgroundColor: '#1e1e1e',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    paddingBottom: 36,
+    backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 16, paddingBottom: 36,
   },
   calendarHint: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 8 },
 });

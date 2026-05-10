@@ -177,6 +177,10 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       if (error) throw error;
 
       setRentModalVisible(false);
+      // Signal AI Planner to tick this item as Requested
+      (navigation as any).getParent()?.navigate('AIPlanner', {
+        plannerUpdate: { itemId: item.id, type: 'requested' },
+      });
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
         params: {
@@ -351,7 +355,14 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnSecondary]}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnSecondary]}
+                onPress={() => {
+                  (navigation as any).getParent()?.navigate('AIPlanner', {
+                    plannerUpdate: { itemId: item.id, type: 'saved' },
+                  });
+                }}
+              >
                 <Text style={styles.actionBtnTextSecondary}>❤️ Wishlist</Text>
               </TouchableOpacity>
 
