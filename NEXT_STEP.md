@@ -56,6 +56,21 @@ Currently the edge function fetches **all** live items and sends them to Groq in
 
 ---
 
+## Backlog — Back Navigation Audit
+
+### Back Navigation UX — needs a full pass
+Back navigation across the app is inconsistent and in some cases unexpected. Known issues encountered so far:
+- Navigating from **AI Planner → ItemDetail** leaves ItemDetail as the stack root with no screen behind it (fixed with `canGoBack()` guard, but the root cause is cross-tab navigation pushing screens without a proper back destination)
+- The **rental calendar modal** closing behaviour: pressing the system back gesture closes the modal but the user lands on ItemDetail rather than being taken back to the AI Planner — may feel counterintuitive depending on the flow they came from
+- General audit needed: every screen that uses `navigation.goBack()` should be checked — ensure there is always a valid back destination and that the user ends up where they intuitively expect
+
+**Suggested fix approach:**
+- Audit all `navigation.goBack()` calls and add `canGoBack()` guards where missing
+- For cross-tab navigations that push screens (AI Planner → HomeStack/ItemDetail), consider using a modal presentation style or a dedicated shared stack so back always returns to the originating tab
+- Consider adding a bottom sheet or swipe-down gesture on the rental calendar instead of a full modal, which would feel more natural as a "dismiss" rather than a "back"
+
+---
+
 ## Backlog (unchanged from previous session)
 
 ### C. My Items — "Manage Item" calendar view
