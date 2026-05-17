@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   TextInput, Dimensions, PanResponder, Animated, Modal, ActivityIndicator,
@@ -8,6 +8,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import type { Item } from '../types/item';
 import { supabase } from '../services/supabase';
+import { useUserLocation } from '../hooks/useUserLocation';
+import { formatDistance } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -23,6 +25,15 @@ const CATEGORY_EMOJI: Record<string, string> = {
   sports: '⚽',
 };
 
+const RADIUS_OPTIONS: { label: string; km: number | null }[] = [
+  { label: '1 km', km: 1 },
+  { label: '5 km', km: 5 },
+  { label: '25 km', km: 25 },
+  { label: '100 km', km: 100 },
+  { label: 'All', km: null },
+];
+const DEFAULT_RADIUS_KM: number | null = 25;
+
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, 'HomeMain'>;
 };
@@ -33,33 +44,59 @@ export default function HomeScreen({ navigation }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [actionPanel, setActionPanel] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [radiusKm, setRadiusKm] = useState<number | null>(DEFAULT_RADIUS_KM);
+  const [query, setQuery] = useState('');
   const position = useRef(new Animated.ValueXY()).current;
+
+  // Reactive location. Re-fetches the feed once it resolves (granted, denied, or error)
+  // so the cards are ranked by ST_Distance from the device when permission was granted.
+  const { coords, status: locStatus } = useUserLocation();
 
   const itemsRef = useRef<Item[]>([]);
   const currentIndexRef = useRef(0);
   const navigationRef = useRef(navigation);
 
-  useEffect(() => { itemsRef.current = items; }, [items]);
+  // Client-side filter — query matches title / description / category, case-insensitive.
+  // Cheap given a typical feed size; if the feed ever grows large move this server-side.
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) =>
+      it.title.toLowerCase().includes(q)
+      || (it.description?.toLowerCase().includes(q) ?? false)
+      || it.category.toLowerCase().includes(q)
+    );
+  }, [items, query]);
+
+  useEffect(() => { itemsRef.current = filteredItems; }, [filteredItems]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { navigationRef.current = navigation; }, [navigation]);
+  // Reset deck position when the visible set shrinks/changes due to a new query.
+  useEffect(() => { setCurrentIndex(0); }, [query]);
 
   useEffect(() => {
+    // Hold the loading state until the OS finishes deciding on the permission.
+    // 'idle' is the brief tick before the hook fires; 'requesting' is the prompt itself.
+    if (locStatus === 'idle' || locStatus === 'requesting') return;
+
+    let cancelled = false;
+    setLoading(true);
     async function fetchItems() {
-      const { data: { user } } = await supabase.auth.getUser();
-      const query = supabase
-        .from('items')
-        .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
-        .eq('verification_status', 'live')
-        .eq('is_hidden', false);
-
-      if (user) query.neq('owner_id', user.id);
-
-      const { data, error } = await query;
-      if (!error && data) setItems(data as Item[]);
+      const { data, error } = await supabase.rpc('get_feed', {
+        p_lat: coords?.latitude ?? null,
+        p_lng: coords?.longitude ?? null,
+        p_radius_km: radiusKm,
+      });
+      if (cancelled) return;
+      if (!error && data) {
+        setItems(data as Item[]);
+        setCurrentIndex(0);
+      }
       setLoading(false);
     }
     fetchItems();
-  }, []);
+    return () => { cancelled = true; };
+  }, [coords?.latitude, coords?.longitude, locStatus, radiusKm]);
 
   function resetPosition() {
     Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
@@ -104,38 +141,59 @@ export default function HomeScreen({ navigation }: Props) {
     outputRange: ['-15deg', '0deg', '15deg'],
   });
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator color="#fff" style={{ flex: 1 }} />
-      </SafeAreaView>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No items available</Text>
-          <Text style={styles.emptySubtext}>Check back later</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const len = items.length;
-  const currentItem = items[currentIndex % len];
-  const nextItem = len > 1 ? items[(currentIndex + 1) % len] : undefined;
+  const len = filteredItems.length;
+  const currentItem = len > 0 ? filteredItems[currentIndex % len] : null;
+  const nextItem = len > 1 ? filteredItems[(currentIndex + 1) % len] : undefined;
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
-        <TextInput style={styles.searchInput} placeholder="Search..." placeholderTextColor="#888" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name, description, category..."
+          placeholderTextColor="#888"
+          value={query}
+          onChangeText={setQuery}
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
         <TouchableOpacity style={styles.filterButton}>
           <Text style={styles.filterIcon}>⚙️</Text>
         </TouchableOpacity>
       </View>
 
+      <View style={styles.radiusBar}>
+        {RADIUS_OPTIONS.map((opt) => {
+          const active = radiusKm === opt.km;
+          return (
+            <TouchableOpacity
+              key={opt.label}
+              style={[styles.radiusChip, active && styles.radiusChipActive]}
+              onPress={() => setRadiusKm(opt.km)}
+            >
+              <Text style={[styles.radiusChipText, active && styles.radiusChipTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {loading ? (
+        <View style={styles.feed}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : currentItem === null ? (
+        <View style={styles.feed}>
+          <Text style={styles.emptyText}>
+            {query ? 'No matches' : 'No items in this radius'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {query ? 'Try different search terms' : 'Try a larger radius or "All"'}
+          </Text>
+        </View>
+      ) : (
       <View style={styles.feed}>
         {nextItem && (
           <View style={[styles.card, styles.backCard]}>
@@ -148,6 +206,14 @@ export default function HomeScreen({ navigation }: Props) {
           {...panResponder.panHandlers}
         >
           <CardImage key={currentItem.id} item={currentItem} />
+          {(() => {
+            const distance = formatDistance(currentItem.distance_meters);
+            return distance ? (
+              <View style={styles.distanceBadge} pointerEvents="none">
+                <Text style={styles.distanceBadgeText}>📍 {distance}</Text>
+              </View>
+            ) : null;
+          })()}
           <View style={styles.cardContent}>
             <Text style={styles.itemTitle}>{currentItem.title}</Text>
             <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
@@ -164,6 +230,7 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         </Animated.View>
       </View>
+      )}
 
       <Modal visible={actionPanel} transparent animationType="slide">
         <View style={styles.overlay}>
@@ -258,6 +325,18 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   filterIcon: { fontSize: 18 },
+  radiusBar: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: '#1f1f1f', borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+  },
+  radiusChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
+  },
+  radiusChipActive: { backgroundColor: '#fff', borderColor: '#fff' },
+  radiusChipText: { color: '#888', fontSize: 12, fontWeight: '500' },
+  radiusChipTextActive: { color: '#000', fontWeight: '700' },
   feed: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   card: {
     width: CARD_WIDTH, height: 460,
@@ -278,6 +357,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
   },
   itemEmoji: { fontSize: 64 },
+  // Floating chip pinned to the top-right of the photo area. pointerEvents="none"
+  // keeps the swipe gesture available across the whole card.
+  distanceBadge: {
+    position: 'absolute', top: 12, right: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  distanceBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   cardContent: { padding: 16, gap: 4 },
   itemTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   itemSubtitle: { fontSize: 14, color: '#888' },

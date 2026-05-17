@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
+import CityPicker, { type CityValue } from '../components/CityPicker';
 
 const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'other'];
 const MAX_ITEM_PHOTOS = 6;
@@ -22,7 +23,7 @@ export default function AddItemScreen() {
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [dailyPrice, setDailyPrice] = useState('');
-  const [city, setCity] = useState('');
+  const [cityValue, setCityValue] = useState<CityValue | null>(null);
   const [forSale, setForSale] = useState(false);
   const [salePrice, setSalePrice] = useState('');
   const [verificationPhoto, setVerificationPhoto] = useState<PhotoAsset | null>(null);
@@ -122,7 +123,7 @@ export default function AddItemScreen() {
       !category && 'Category',
       !description.trim() && 'Description',
       !dailyPrice && 'Daily Price',
-      !city.trim() && 'City',
+      !cityValue && 'City',
     ].filter(Boolean);
 
     if (missing.length > 0) {
@@ -148,6 +149,8 @@ export default function AddItemScreen() {
         photoUrls.push(url);
       }
 
+      // Item location comes from the user's CityPicker selection — explicit and
+      // verifiable, unlike device GPS which could be anywhere when listing.
       const { error } = await supabase.from('items').insert({
         owner_id: user.id,
         title: title.trim(),
@@ -155,10 +158,11 @@ export default function AddItemScreen() {
         description: description.trim(),
         daily_price: parseFloat(dailyPrice),
         sale_price: forSale && salePrice ? parseFloat(salePrice) : null,
-        city: city.trim(),
+        city: cityValue!.city,
         verification_status: status,
         verification_image_url: verificationUrl,
         photos: photoUrls,
+        location: `POINT(${cityValue!.lng} ${cityValue!.lat})`,
       });
 
       if (error) throw error;
@@ -170,7 +174,7 @@ export default function AddItemScreen() {
           : 'Your item is pending review.',
       );
       setTitle(''); setCategory(''); setDescription('');
-      setDailyPrice(''); setCity('');
+      setDailyPrice(''); setCityValue(null);
       setForSale(false); setSalePrice('');
       setVerificationPhoto(null); setItemPhotos([]);
     } catch (e: any) {
@@ -217,7 +221,7 @@ export default function AddItemScreen() {
           <TextInput style={styles.input} placeholder="0.00" placeholderTextColor="#555" value={dailyPrice} onChangeText={setDailyPrice} keyboardType="decimal-pad" />
 
           <Text style={styles.label}>City *</Text>
-          <TextInput style={styles.input} placeholder="e.g. Tel Aviv" placeholderTextColor="#555" value={city} onChangeText={setCity} />
+          <CityPicker value={cityValue} onChange={setCityValue} placeholder="Choose city" />
 
           <View style={styles.toggleRow}>
             <Text style={styles.label}>Also available for sale</Text>

@@ -43,7 +43,17 @@
           "merchantIdentifier": "merchant.com.swipeandrentapp",
           "enableGooglePay": false
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SwipeAndRent uses your location to rank items by distance so you see what's near you first.",
+          "locationWhenInUsePermission": "SwipeAndRent uses your location to rank items by distance so you see what's near you first.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ],
+      "expo-web-browser"
     ]
   }
 }

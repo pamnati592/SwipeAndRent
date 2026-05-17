@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
+import CityPicker, { type CityValue } from '../components/CityPicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 
@@ -27,7 +28,10 @@ export default function EditItemScreen({ navigation, route }: Props) {
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [dailyPrice, setDailyPrice] = useState('');
-  const [city, setCity] = useState('');
+  const [cityValue, setCityValue] = useState<CityValue | null>(null);
+  // Legacy city text from the row before the user picks a new one — shown in
+  // the CityPicker field so an edit without changing city is still meaningful.
+  const [legacyCityText, setLegacyCityText] = useState<string>('');
   const [forSale, setForSale] = useState(false);
   const [salePrice, setSalePrice] = useState('');
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -38,7 +42,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
     async function loadItem() {
       const { data, error } = await supabase
         .from('items')
-        .select('title, category, description, daily_price, sale_price, city, photos')
+        .select('title, category, description, daily_price, sale_price, city, photos, location')
         .eq('id', itemId)
         .single();
 
@@ -52,7 +56,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
       setCategory(data.category ?? '');
       setDescription(data.description ?? '');
       setDailyPrice(String(data.daily_price ?? ''));
-      setCity(data.city ?? '');
+      setLegacyCityText(data.city ?? '');
       setForSale(data.sale_price != null);
       setSalePrice(data.sale_price != null ? String(data.sale_price) : '');
       setPhotos((data.photos ?? []).filter(Boolean).map((url: string) => ({ kind: 'existing', url })));
@@ -108,7 +112,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
       !category && 'Category',
       !description.trim() && 'Description',
       !dailyPrice && 'Daily Price',
-      !city.trim() && 'City',
+      !cityValue && !legacyCityText && 'City',
     ].filter(Boolean);
     if (missing.length > 0) { Alert.alert('Missing fields', `Please fill in: ${missing.join(', ')}`); return; }
 
@@ -129,15 +133,23 @@ export default function EditItemScreen({ navigation, route }: Props) {
         }
       }
 
-      const { error } = await supabase.from('items').update({
+      // Only overwrite city + location when the user actively picks a new one.
+      // Editing just the description from a different physical place must not
+      // silently change the item's stored location.
+      const updatePayload: Record<string, unknown> = {
         title: title.trim(),
         category,
         description: description.trim(),
         daily_price: parseFloat(dailyPrice),
         sale_price: forSale && salePrice ? parseFloat(salePrice) : null,
-        city: city.trim(),
         photos: finalPhotos,
-      }).eq('id', itemId);
+      };
+      if (cityValue) {
+        updatePayload.city = cityValue.city;
+        updatePayload.location = `POINT(${cityValue.lng} ${cityValue.lat})`;
+      }
+
+      const { error } = await supabase.from('items').update(updatePayload).eq('id', itemId);
 
       if (error) throw error;
       Alert.alert('Saved', 'Your item has been updated.', [
@@ -235,7 +247,12 @@ export default function EditItemScreen({ navigation, route }: Props) {
           <TextInput style={styles.input} placeholderTextColor="#555" value={dailyPrice} onChangeText={setDailyPrice} keyboardType="decimal-pad" />
 
           <Text style={styles.label}>City *</Text>
-          <TextInput style={styles.input} placeholderTextColor="#555" value={city} onChangeText={setCity} />
+          <CityPicker
+            value={cityValue}
+            onChange={setCityValue}
+            initialDisplayText={legacyCityText}
+            placeholder="Choose city"
+          />
 
           <View style={styles.toggleRow}>
             <Text style={styles.label}>Also available for sale</Text>

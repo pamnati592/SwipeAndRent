@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
+import CityPicker, { type CityValue } from '../components/CityPicker';
 
 const ROLES = [
   { value: 'renter', label: 'Renter', description: 'I want to rent items from others', emoji: '🛒' },
@@ -33,7 +34,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<Role | null>(null);
   const [fullName, setFullName] = useState('');
-  const [city, setCity] = useState('');
+  const [cityValue, setCityValue] = useState<CityValue | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -58,7 +59,8 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
         .update({
           role,
           full_name: fullName.trim(),
-          city: city.trim(),
+          city: cityValue!.city,
+          location: `POINT(${cityValue!.lng} ${cityValue!.lat})`,
           interests,
           onboarding_complete: true,
         })
@@ -136,18 +138,16 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             />
 
             <Text style={styles.label}>City</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Tel Aviv"
-              placeholderTextColor="#555"
-              value={city}
-              onChangeText={setCity}
+            <CityPicker
+              value={cityValue}
+              onChange={setCityValue}
+              placeholder="e.g. Tel Aviv-Yafo"
             />
 
             <TouchableOpacity
-              style={[styles.nextButton, (!fullName.trim() || !city.trim()) && styles.nextButtonDisabled]}
-              onPress={() => (fullName.trim() && city.trim()) && setStep(3)}
-              disabled={!fullName.trim() || !city.trim()}
+              style={[styles.nextButton, (!fullName.trim() || !cityValue) && styles.nextButtonDisabled]}
+              onPress={() => (fullName.trim() && cityValue) && setStep(3)}
+              disabled={!fullName.trim() || !cityValue}
             >
               <Text style={styles.nextButtonText}>Continue</Text>
             </TouchableOpacity>
