@@ -42,6 +42,19 @@ When you build the QR flow, wire any status change (item handed over, item retur
 
 # Backlog
 
+### M. Post-rental rating prompt
+- When a transaction moves to `completed`, both parties are prompted inline (inside `ChatRoomScreen` Rental tab) to rate the other person: 1–5 stars + optional short comment.
+- Ratings stored in a new `ratings` table: `(id, reviewer_id, reviewee_id, transaction_id, score, comment, created_at)`.
+- Scores aggregate into `lender_score` and `renter_score` on `profiles` (fields already exist, currently 0). Use a DB trigger or RPC to recompute the average on each new rating row.
+- SAS rule: the rating UI lives only in `ChatRoomScreen`. `MyRentalsScreen` / `HistoryScreen` show the final score but never host the rating action itself.
+
+### N. Retroactive rental scoring (reputation bootstrap)
+- Both sides (lender and renter) have a history of past rentals. After each `completed` transaction, the system should look back at the full history for both parties and recompute their scores (weighted recency — more recent rentals count more).
+- For lenders: factors are item condition accuracy, response time to requests, cancellation rate.
+- For renters: factors are on-time return, item care (no disputes), cancellation rate.
+- This should run as a Supabase DB function / RPC triggered on every rating insert, so scores stay live without a separate cron job.
+- Display the score badge and total-review count on `PublicProfileScreen` (already shown, just needs real data).
+
 ### C. Buy option
 - Toggle on item upload: "Also available for purchase" + sale price
 - "Buy" button on swipe panel + Item Detail (currently a no-op placeholder)
@@ -58,10 +71,11 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
 - Likely a new `p_user_id` parameter or just use `auth.uid()` internally as it already does for the owner filter.
 
-### H. QR code transfer & return
+### H. QR code transfer & return ⬅ immediate next priority
 - After payment → generate `qr_token` on transaction
 - Renter shows QR → lender scans → status → active
 - Return: new QR → lender scans → status → completed
+- See the detailed spec at the top of this file
 
 ### I. Back navigation audit
 - Every `navigation.goBack()` call needs a `canGoBack()` guard

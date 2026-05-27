@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
-  TextInput, Dimensions, PanResponder, Animated, Modal, ActivityIndicator,
+  TextInput, Dimensions, PanResponder, Animated, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,8 +13,7 @@ import { formatDistance } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
-// Explicit card width so child Image doesn't inherit a bad percentage inside Animated.View + maxWidth
-const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 320); // 32 = 16px feed padding each side
+const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 320);
 
 const CATEGORY_EMOJI: Record<string, string> = {
   photography: '📷',
@@ -25,14 +24,23 @@ const CATEGORY_EMOJI: Record<string, string> = {
   sports: '⚽',
 };
 
-const RADIUS_OPTIONS: { label: string; km: number | null }[] = [
-  { label: '1 km', km: 1 },
-  { label: '5 km', km: 5 },
-  { label: '25 km', km: 25 },
-  { label: '100 km', km: 100 },
-  { label: 'All', km: null },
-];
-const DEFAULT_RADIUS_KM: number | null = 25;
+// Radius slider
+const THUMB_D = 26;
+const SLIDER_TRACK_W = SCREEN_WIDTH - 32; // 16px padding each side
+const SLIDER_RANGE = SLIDER_TRACK_W - THUMB_D;
+const RADIUS_MIN_KM = 1;
+const RADIUS_MAX_KM = 100;
+const DEFAULT_RADIUS_KM = 25;
+
+// Log scale: 10 km sits at exactly 50% of the track, giving more room to small distances.
+function posToKm(pos: number): number {
+  const t = pos / SLIDER_RANGE;
+  return Math.round(RADIUS_MIN_KM * Math.pow(RADIUS_MAX_KM / RADIUS_MIN_KM, t));
+}
+function kmToPos(km: number): number {
+  const t = Math.log(Math.max(1, km) / RADIUS_MIN_KM) / Math.log(RADIUS_MAX_KM / RADIUS_MIN_KM);
+  return Math.max(0, Math.min(SLIDER_RANGE, t * SLIDER_RANGE));
+}
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, 'HomeMain'>;
@@ -42,22 +50,16 @@ export default function HomeScreen({ navigation }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [actionPanel, setActionPanel] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [radiusKm, setRadiusKm] = useState<number | null>(DEFAULT_RADIUS_KM);
+  const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
   const [query, setQuery] = useState('');
   const position = useRef(new Animated.ValueXY()).current;
 
-  // Reactive location. Re-fetches the feed once it resolves (granted, denied, or error)
-  // so the cards are ranked by ST_Distance from the device when permission was granted.
   const { coords, status: locStatus } = useUserLocation();
 
   const itemsRef = useRef<Item[]>([]);
   const currentIndexRef = useRef(0);
   const navigationRef = useRef(navigation);
 
-  // Client-side filter — query matches title / description / category, case-insensitive.
-  // Cheap given a typical feed size; if the feed ever grows large move this server-side.
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
@@ -71,12 +73,9 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => { itemsRef.current = filteredItems; }, [filteredItems]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { navigationRef.current = navigation; }, [navigation]);
-  // Reset deck position when the visible set shrinks/changes due to a new query.
   useEffect(() => { setCurrentIndex(0); }, [query]);
 
   useEffect(() => {
-    // Hold the loading state until the OS finishes deciding on the permission.
-    // 'idle' is the brief tick before the hook fires; 'requesting' is the prompt itself.
     if (locStatus === 'idle' || locStatus === 'requesting') return;
 
     let cancelled = false;
@@ -85,7 +84,7 @@ export default function HomeScreen({ navigation }: Props) {
       const { data, error } = await supabase.rpc('get_feed', {
         p_lat: coords?.latitude ?? null,
         p_lng: coords?.longitude ?? null,
-        p_radius_km: radiusKm,
+        p_radius_km: radiusKm >= RADIUS_MAX_KM ? null : radiusKm,
       });
       if (cancelled) return;
       if (!error && data) {
@@ -109,8 +108,7 @@ export default function HomeScreen({ navigation }: Props) {
       if (direction === 'right') {
         const len = itemsRef.current.length;
         const item = len > 0 ? itemsRef.current[currentIndexRef.current % len] : null;
-        setSelectedItem(item);
-        setActionPanel(true);
+        if (item) navigationRef.current.navigate('ItemDetail', { item });
       }
       setCurrentIndex((prev) => prev + 1);
     });
@@ -158,27 +156,9 @@ export default function HomeScreen({ navigation }: Props) {
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
-        <TouchableOpacity style={styles.filterButton}>
-          <Text style={styles.filterIcon}>⚙️</Text>
-        </TouchableOpacity>
       </View>
 
-      <View style={styles.radiusBar}>
-        {RADIUS_OPTIONS.map((opt) => {
-          const active = radiusKm === opt.km;
-          return (
-            <TouchableOpacity
-              key={opt.label}
-              style={[styles.radiusChip, active && styles.radiusChipActive]}
-              onPress={() => setRadiusKm(opt.km)}
-            >
-              <Text style={[styles.radiusChipText, active && styles.radiusChipTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
 
       {loading ? (
         <View style={styles.feed}>
@@ -190,100 +170,121 @@ export default function HomeScreen({ navigation }: Props) {
             {query ? 'No matches' : 'No items in this radius'}
           </Text>
           <Text style={styles.emptySubtext}>
-            {query ? 'Try different search terms' : 'Try a larger radius or "All"'}
+            {query ? 'Try different search terms' : 'Try a larger radius or drag to All'}
           </Text>
         </View>
       ) : (
-      <View style={styles.feed}>
-        {nextItem && (
-          <View style={[styles.card, styles.backCard]}>
-            <CardImage key={nextItem.id} item={nextItem} />
-          </View>
-        )}
+        <View style={styles.feed}>
+          {nextItem && (
+            <View style={[styles.card, styles.backCard]}>
+              <CardImage key={nextItem.id} item={nextItem} />
+            </View>
+          )}
 
-        <Animated.View
-          style={[styles.card, { transform: [...position.getTranslateTransform(), { rotate }] }]}
-          {...panResponder.panHandlers}
-        >
-          <CardImage key={currentItem.id} item={currentItem} />
-          {(() => {
-            const distance = formatDistance(currentItem.distance_meters);
-            return distance ? (
-              <View style={styles.distanceBadge} pointerEvents="none">
-                <Text style={styles.distanceBadgeText}>📍 {distance}</Text>
-              </View>
-            ) : null;
-          })()}
-          <View style={styles.cardContent}>
-            <Text style={styles.itemTitle}>{currentItem.title}</Text>
-            <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
-            <Text style={styles.itemPrice}>₪{currentItem.daily_price}/day</Text>
-            {currentItem.city && <Text style={styles.itemDistance}>📍 {currentItem.city}</Text>}
-          </View>
-          <View style={styles.swipeButtons}>
-            <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
-              <Text style={styles.swipeBtnText}>✕</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('right')}>
-              <Text style={styles.swipeBtnText}>♥</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
+          <Animated.View
+            style={[styles.card, { transform: [...position.getTranslateTransform(), { rotate }] }]}
+            {...panResponder.panHandlers}
+          >
+            <CardImage key={currentItem.id} item={currentItem} />
+            {(() => {
+              const distance = formatDistance(currentItem.distance_meters);
+              return distance ? (
+                <View style={styles.distanceBadge} pointerEvents="none">
+                  <Text style={styles.distanceBadgeText}>📍 {distance}</Text>
+                </View>
+              ) : null;
+            })()}
+            <View style={styles.cardContent}>
+              <Text style={styles.itemTitle}>{currentItem.title}</Text>
+              <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
+              <Text style={styles.itemPrice}>₪{currentItem.daily_price}/day</Text>
+              {currentItem.city && <Text style={styles.itemDistance}>📍 {currentItem.city}</Text>}
+            </View>
+            <View style={styles.swipeButtons}>
+              <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
+                <Text style={styles.swipeBtnText}>✕</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('right')}>
+                <Text style={styles.swipeBtnText}>♥</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
       )}
 
-      <Modal visible={actionPanel} transparent animationType="slide">
-        <View style={styles.overlay}>
-          <View style={styles.bottomSheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{selectedItem?.title}</Text>
-
-            <TouchableOpacity
-              style={styles.sheetButton}
-              onPress={() => {
-                setActionPanel(false);
-                if (selectedItem) navigationRef.current.navigate('ItemDetail', { item: selectedItem });
-              }}
-            >
-              <Text style={styles.sheetButtonText}>📋 View Details</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sheetButton}
-              onPress={() => {
-                setActionPanel(false);
-                if (selectedItem) navigationRef.current.navigate('ItemDetail', { item: selectedItem, openRent: true });
-              }}
-            >
-              <Text style={styles.sheetButtonText}>🏷️ Rent</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetButton} onPress={() => setActionPanel(false)}>
-              <Text style={styles.sheetButtonText}>🛒 Purchase</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sheetButton}
-              onPress={async () => {
-                setActionPanel(false);
-                if (!selectedItem) return;
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                await supabase.from('wishlist').upsert({ user_id: user.id, item_id: selectedItem.id });
-              }}
-            >
-              <Text style={styles.sheetButtonText}>❤️ Add to Wishlist</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetCancelButton} onPress={() => setActionPanel(false)}>
-              <Text style={styles.sheetCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
+
+// ── Radius Slider ─────────────────────────────────────────────────────────────
+
+function RadiusSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { valueRef.current = value; }, [value]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  const thumbAnim = useRef(new Animated.Value(kmToPos(value))).current;
+  const [liveKm, setLiveKm] = useState(value);
+  const startPos = useRef(0);
+
+  useEffect(() => {
+    thumbAnim.setValue(kmToPos(value));
+    setLiveKm(value);
+  }, [value]);
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startPos.current = kmToPos(valueRef.current);
+      },
+      onPanResponderMove: (_, g) => {
+        const pos = Math.max(0, Math.min(SLIDER_RANGE, startPos.current + g.dx));
+        thumbAnim.setValue(pos);
+        setLiveKm(posToKm(pos));
+      },
+      onPanResponderRelease: (_, g) => {
+        const pos = Math.max(0, Math.min(SLIDER_RANGE, startPos.current + g.dx));
+        const km = posToKm(pos);
+        thumbAnim.setValue(pos);
+        setLiveKm(km);
+        onChangeRef.current(km);
+      },
+    })
+  ).current;
+
+  const label = liveKm >= RADIUS_MAX_KM ? 'All' : `${liveKm} km`;
+
+  return (
+    <View style={sliderStyles.wrapper}>
+      <View style={sliderStyles.header}>
+        <Text style={sliderStyles.headerKey}>Radius</Text>
+        <Text style={sliderStyles.headerVal}>{label}</Text>
+      </View>
+      <View style={sliderStyles.trackWrap}>
+        <View style={sliderStyles.trackBg} />
+        <Animated.View style={[sliderStyles.trackFill, { width: thumbAnim }]} />
+        <Animated.View
+          {...pan.panHandlers}
+          style={[sliderStyles.thumb, { left: thumbAnim }]}
+        />
+      </View>
+      <View style={sliderStyles.endLabels}>
+        <Text style={sliderStyles.endLabel}>1 km</Text>
+        <Text style={sliderStyles.endLabel}>∞ All</Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Card image with emoji fallback ────────────────────────────────────────────
 
 function CardImage({ item }: { item: Item }) {
   const [failed, setFailed] = useState(false);
@@ -295,8 +296,7 @@ function CardImage({ item }: { item: Item }) {
         source={{ uri: mainPhoto }}
         style={styles.cardPhoto}
         resizeMode="cover"
-        onLoad={() => console.log('[Card] image loaded')}
-        onError={() => { console.warn('[Card] image error'); setFailed(true); }}
+        onError={() => setFailed(true)}
       />
     );
   }
@@ -307,36 +307,20 @@ function CardImage({ item }: { item: Item }) {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a1a1a' },
   topBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: '#242424', borderBottomWidth: 1, borderBottomColor: '#333', gap: 8,
+    backgroundColor: '#242424', borderBottomWidth: 1, borderBottomColor: '#333',
   },
   searchInput: {
     flex: 1, height: 40, backgroundColor: '#2a2a2a',
     borderWidth: 1, borderColor: '#3a3a3a', borderRadius: 8,
     paddingHorizontal: 12, color: '#fff', fontSize: 14,
   },
-  filterButton: {
-    width: 40, height: 40, backgroundColor: '#2a2a2a',
-    borderWidth: 1, borderColor: '#3a3a3a', borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  filterIcon: { fontSize: 18 },
-  radiusBar: {
-    flexDirection: 'row', gap: 8,
-    paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: '#1f1f1f', borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
-  },
-  radiusChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
-  },
-  radiusChipActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  radiusChipText: { color: '#888', fontSize: 12, fontWeight: '500' },
-  radiusChipTextActive: { color: '#000', fontWeight: '700' },
   feed: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   card: {
     width: CARD_WIDTH, height: 460,
@@ -344,27 +328,18 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: '#3a3a3a', overflow: 'hidden',
   },
   backCard: { position: 'absolute', transform: [{ scale: 0.95 }], opacity: 0.5 },
-  cardPhoto: {
-    width: CARD_WIDTH,
-    height: 220,
-    borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
-  },
+  cardPhoto: { width: CARD_WIDTH, height: 220, borderBottomWidth: 1, borderBottomColor: '#3a3a3a' },
   cardPhotoFallback: {
-    width: CARD_WIDTH,
-    height: 220,
-    backgroundColor: '#333',
-    alignItems: 'center', justifyContent: 'center',
+    width: CARD_WIDTH, height: 220,
+    backgroundColor: '#333', alignItems: 'center', justifyContent: 'center',
     borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
   },
   itemEmoji: { fontSize: 64 },
-  // Floating chip pinned to the top-right of the photo area. pointerEvents="none"
-  // keeps the swipe gesture available across the whole card.
   distanceBadge: {
     position: 'absolute', top: 12, right: 12,
     backgroundColor: 'rgba(0,0,0,0.65)',
     paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
   distanceBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   cardContent: { padding: 16, gap: 4 },
@@ -382,22 +357,48 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   swipeBtnText: { fontSize: 22, color: '#fff' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   emptyText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   emptySubtext: { fontSize: 14, color: '#666' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  bottomSheet: {
-    backgroundColor: '#242424', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, gap: 12,
+});
+
+const sliderStyles = StyleSheet.create({
+  wrapper: {
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12,
+    backgroundColor: '#1f1f1f',
+    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
   },
-  sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
-  sheetTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  sheetButton: {
-    height: 56, backgroundColor: '#2a2a2a',
-    borderWidth: 2, borderColor: '#3a3a3a', borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 10,
   },
-  sheetButtonText: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  sheetCancelButton: { height: 48, alignItems: 'center', justifyContent: 'center' },
-  sheetCancelText: { color: '#666', fontSize: 14 },
+  headerKey: { color: '#888', fontSize: 12, fontWeight: '500' },
+  headerVal: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  trackWrap: {
+    height: THUMB_D,
+    justifyContent: 'center',
+  },
+  trackBg: {
+    position: 'absolute',
+    left: THUMB_D / 2,
+    right: THUMB_D / 2,
+    height: 3, borderRadius: 1.5,
+    backgroundColor: '#3a3a3a',
+  },
+  trackFill: {
+    position: 'absolute',
+    left: THUMB_D / 2,
+    height: 3, borderRadius: 1.5,
+    backgroundColor: '#ffffff',
+  },
+  thumb: {
+    position: 'absolute',
+    width: THUMB_D, height: THUMB_D, borderRadius: THUMB_D / 2,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35, shadowRadius: 4, elevation: 5,
+  },
+  endLabels: {
+    flexDirection: 'row', justifyContent: 'space-between', marginTop: 6,
+  },
+  endLabel: { color: '#555', fontSize: 11 },
 });
