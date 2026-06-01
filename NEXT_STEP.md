@@ -91,6 +91,14 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Show all past completed/cancelled/disputed rentals for both sides (as renter and as lender)
 - Group by role or chronological order TBD
 
+### O. Split Chats tab by role (Renter / Lender)
+- Currently all conversations are mixed in a single list — hard to tell which hat you're wearing in each thread
+- Split `ChatsScreen` into two tabs: **Renting** (conversations where the current user is the renter) and **Lending** (conversations where the current user is the item owner)
+- A conversation belongs to "Lending" if `items.owner_id = auth.uid()`, and to "Renting" if the renter is `auth.uid()`
+- Unread badge on the Chats tab should still reflect total unread across both tabs
+- Each sub-tab gets its own unread count shown on the tab pill
+- SAS rule: `ChatRoomScreen` itself doesn't change — only the list that leads into it is split
+
 ### L. Google Cloud account hardening (operational, not code)
 - Before Free Trial expiry: set Hard Quotas (1000/day) on Places API + Geocoding API in Google Cloud Console
 - Add a Budget Alert of $1 with email notifications at 50% / 90% / 100%
