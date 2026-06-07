@@ -9,6 +9,9 @@ import {
   newSessionToken, type PlaceSuggestion,
 } from '../services/places';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
+import { MapPin } from 'lucide-react-native';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
 
 export type CityValue = {
   city: string;
@@ -29,6 +32,8 @@ type Props = {
 export default function CityPicker({
   value, onChange, placeholder = 'Choose a city', initialDisplayText,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [open, setOpen] = useState(false);
   const displayText =
     value?.city ?? initialDisplayText ?? '';
@@ -65,6 +70,8 @@ function PickerModal({
   onCancel: () => void;
   onSelect: (v: CityValue) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -144,14 +151,14 @@ function PickerModal({
           <TextInput
             style={styles.searchInput}
             placeholder="Search city..."
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textFaint}
             value={query}
             onChangeText={setQuery}
             autoFocus
             autoCorrect={false}
             returnKeyType="search"
           />
-          {loadingSearch && <ActivityIndicator color="#888" style={styles.searchSpinner} />}
+          {loadingSearch && <ActivityIndicator color={colors.textMuted} style={styles.searchSpinner} />}
         </View>
 
         <TouchableOpacity
@@ -160,8 +167,11 @@ function PickerModal({
           disabled={loadingGps}
         >
           {loadingGps
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.gpsRowText}>📍 Use my current location</Text>
+            ? <ActivityIndicator color={colors.text} />
+            : <>
+                <MapPin size={16} color={colors.primary} />
+                <Text style={styles.gpsRowText}>Use my current location</Text>
+              </>
           }
         </TouchableOpacity>
 
@@ -188,7 +198,7 @@ function PickerModal({
                   ? <Text style={styles.suggestionSecondary}>{item.secondaryText}</Text>
                   : null}
               </View>
-              {loadingPlace === item.placeId && <ActivityIndicator color="#888" />}
+              {loadingPlace === item.placeId && <ActivityIndicator color={colors.textMuted} />}
             </TouchableOpacity>
           )}
         />
@@ -197,48 +207,48 @@ function PickerModal({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   field: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12, minHeight: 48,
   },
-  fieldText: { flex: 1, color: '#fff', fontSize: 15 },
-  fieldPlaceholder: { color: '#666' },
-  chevron: { color: '#666', fontSize: 22, marginLeft: 8 },
+  fieldText: { flex: 1, color: colors.text, fontSize: 15 },
+  fieldPlaceholder: { color: colors.textFaint },
+  chevron: { color: colors.textFaint, fontSize: 22, marginLeft: 8 },
 
-  modalContainer: { flex: 1, backgroundColor: '#1a1a1a' },
+  modalContainer: { flex: 1, backgroundColor: colors.bg },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   headerBtn: { minWidth: 60 },
-  headerBtnText: { color: '#fff', fontSize: 15 },
-  modalTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  headerBtnText: { color: colors.text, fontSize: 15 },
+  modalTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
 
   searchBox: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, position: 'relative' },
   searchInput: {
-    height: 44, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
-    borderRadius: 10, paddingHorizontal: 14, color: '#fff', fontSize: 15,
+    height: 44, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 10, paddingHorizontal: 14, color: colors.text, fontSize: 15,
   },
   searchSpinner: { position: 'absolute', right: 28, top: 24 },
 
   gpsRow: {
     marginHorizontal: 16, marginBottom: 12, height: 48,
-    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
-    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 10, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
   },
-  gpsRowText: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  gpsRowText: { color: colors.text, fontSize: 14, fontWeight: '500' },
 
   suggestionRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#222',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  suggestionPrimary: { color: '#fff', fontSize: 15 },
-  suggestionSecondary: { color: '#888', fontSize: 12, marginTop: 2 },
+  suggestionPrimary: { color: colors.text, fontSize: 15 },
+  suggestionSecondary: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
 
   empty: { alignItems: 'center', paddingTop: 40 },
-  emptyText: { color: '#666', fontSize: 14 },
+  emptyText: { color: colors.textFaint, fontSize: 14 },
 });

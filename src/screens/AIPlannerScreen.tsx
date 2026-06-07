@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Image, ActivityIndicator, Modal, ScrollView,
@@ -9,11 +9,13 @@ import { Calendar } from 'react-native-calendars';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import type { MainTabParamList } from '../navigation/MainTabNavigator';
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷', gaming: '🎮', camping: '⛺',
-  diy: '🔧', music: '🎸', sports: '⚽',
-};
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import {
+  Sparkles, Calendar as CalendarIcon, ArrowRight, X, Search, Check, Heart,
+  type LucideIcon,
+} from 'lucide-react-native';
 
 type ChecklistStatus = 'dismissed' | 'requested' | 'saved';
 
@@ -38,15 +40,15 @@ type MarkedDates = Record<string, {
   textColor?: string;
 }>;
 
-function buildPeriodMarks(start: string, end: string): MarkedDates {
+function buildPeriodMarks(start: string, end: string, colors: ThemeColors): MarkedDates {
   const marks: MarkedDates = {};
   const cur = new Date(start);
   const last = new Date(end);
   while (cur <= last) {
     const key = cur.toISOString().split('T')[0];
     marks[key] = {
-      color: '#8b5cf6',
-      textColor: '#fff',
+      color: colors.accent,
+      textColor: colors.text,
       startingDay: key === start,
       endingDay: key === end,
     };
@@ -64,13 +66,15 @@ function formatDate(d: string | null) {
   return `${parseInt(day)} ${MONTHS[parseInt(m) - 1]}`;
 }
 
-const STATUS_ICON: Record<ChecklistStatus, string> = {
-  requested: '✅',
-  saved: '❤️',
-  dismissed: '✕',
+const STATUS_ICON: Record<ChecklistStatus, LucideIcon> = {
+  requested: Check,
+  saved: Heart,
+  dismissed: X,
 };
 
 export default function AIPlannerScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<MainTabParamList, 'AIPlanner'>>();
 
@@ -113,9 +117,9 @@ export default function AIPlannerScreen() {
   }
 
   const markedDates: MarkedDates = startDate && endDate
-    ? buildPeriodMarks(startDate, endDate)
+    ? buildPeriodMarks(startDate, endDate, colors)
     : startDate
-    ? { [startDate]: { startingDay: true, endingDay: true, color: '#8b5cf6', textColor: '#fff' } }
+    ? { [startDate]: { startingDay: true, endingDay: true, color: colors.accent, textColor: colors.text } }
     : {};
 
   async function handleSearch() {
@@ -179,13 +183,16 @@ export default function AIPlannerScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>✨ AI Planner</Text>
+          <View style={styles.titleRow}>
+            <Sparkles size={22} color={colors.accent} />
+            <Text style={styles.title}>AI Planner</Text>
+          </View>
           <Text style={styles.subtitle}>Describe what you need and let AI find it</Text>
 
           <TextInput
             style={styles.input}
             placeholder="e.g. tent for a camping weekend in the mountains"
-            placeholderTextColor="#555"
+            placeholderTextColor={colors.textFaint}
             value={query}
             onChangeText={setQuery}
             multiline
@@ -199,15 +206,15 @@ export default function AIPlannerScreen() {
               style={styles.dateBtn}
               onPress={() => { setPickingStart(true); setCalendarVisible(true); }}
             >
-              <Text style={styles.dateBtnIcon}>📅</Text>
+              <CalendarIcon size={16} color={colors.textMuted} />
               <Text style={styles.dateBtnText}>{formatDate(startDate)}</Text>
             </TouchableOpacity>
-            <Text style={styles.dateArrow}>→</Text>
+            <ArrowRight size={18} color={colors.textFaint} />
             <TouchableOpacity
               style={styles.dateBtn}
               onPress={() => { setPickingStart(false); setCalendarVisible(true); }}
             >
-              <Text style={styles.dateBtnIcon}>📅</Text>
+              <CalendarIcon size={16} color={colors.textMuted} />
               <Text style={styles.dateBtnText}>{formatDate(endDate)}</Text>
             </TouchableOpacity>
             {(startDate || endDate) ? (
@@ -215,7 +222,7 @@ export default function AIPlannerScreen() {
                 style={styles.clearDates}
                 onPress={() => { setStartDate(null); setEndDate(null); }}
               >
-                <Text style={styles.clearDatesText}>✕</Text>
+                <X size={16} color={colors.textMuted} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -226,7 +233,7 @@ export default function AIPlannerScreen() {
             disabled={loading}
           >
             {loading
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.text} />
               : <Text style={styles.searchBtnText}>Search with AI</Text>
             }
           </TouchableOpacity>
@@ -234,7 +241,7 @@ export default function AIPlannerScreen() {
           {sortedResults !== null && (
             sortedResults.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>🔍</Text>
+                <Search size={48} color={colors.textFaint} strokeWidth={1.5} />
                 <Text style={styles.emptyText}>No matching items found.</Text>
                 <Text style={styles.emptyHint}>Try a different search or broader dates.</Text>
               </View>
@@ -261,7 +268,7 @@ export default function AIPlannerScreen() {
                       <View style={styles.cardMedia}>
                         {item.photos?.[0]
                           ? <Image source={{ uri: item.photos[0] }} style={styles.cardImage} />
-                          : <Text style={styles.cardEmoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+                          : <CategoryIcon category={item.category} size={26} color={colors.textSecondary} />
                         }
                       </View>
                       <View style={styles.cardBody}>
@@ -284,7 +291,7 @@ export default function AIPlannerScreen() {
                       >
                         {isDone ? (
                           <View style={[styles.checkboxDone, status === 'requested' && styles.checkboxRequested, status === 'saved' && styles.checkboxSaved]}>
-                            <Text style={styles.checkboxIcon}>{STATUS_ICON[status]}</Text>
+                            {(() => { const StatusIcon = STATUS_ICON[status]; return <StatusIcon size={14} color={colors.white} strokeWidth={2.6} />; })()}
                           </View>
                         ) : (
                           <View style={styles.checkboxEmpty}>
@@ -317,16 +324,16 @@ export default function AIPlannerScreen() {
               markingType="period"
               markedDates={markedDates}
               theme={{
-                backgroundColor: '#1e1e1e',
-                calendarBackground: '#1e1e1e',
-                textSectionTitleColor: '#888',
-                dayTextColor: '#fff',
-                todayTextColor: '#8b5cf6',
-                selectedDayBackgroundColor: '#8b5cf6',
-                selectedDayTextColor: '#fff',
-                monthTextColor: '#fff',
-                arrowColor: '#8b5cf6',
-                textDisabledColor: '#444',
+                backgroundColor: colors.surface,
+                calendarBackground: colors.surface,
+                textSectionTitleColor: colors.textMuted,
+                dayTextColor: colors.text,
+                todayTextColor: colors.accent,
+                selectedDayBackgroundColor: colors.accent,
+                selectedDayTextColor: colors.text,
+                monthTextColor: colors.text,
+                arrowColor: colors.accent,
+                textDisabledColor: colors.textFaint,
               }}
             />
           </View>
@@ -336,89 +343,90 @@ export default function AIPlannerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 20, paddingBottom: 40 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '700', marginBottom: 4 },
-  subtitle: { color: '#888', fontSize: 14, marginBottom: 20 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  title: { color: colors.text, fontSize: 26, fontWeight: '700' },
+  subtitle: { color: colors.textMuted, fontSize: 14, marginBottom: 20 },
   input: {
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
+    backgroundColor: colors.card,
+    color: colors.text,
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
     minHeight: 80,
     textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: colors.border,
     marginBottom: 20,
   },
-  label: { color: '#888', fontSize: 13, marginBottom: 8 },
+  label: { color: colors.textMuted, fontSize: 13, marginBottom: 8 },
   dateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 8 },
   dateBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#2a2a2a', borderRadius: 10, padding: 12, gap: 6,
-    borderWidth: 1, borderColor: '#333',
+    backgroundColor: colors.card, borderRadius: 10, padding: 12, gap: 6,
+    borderWidth: 1, borderColor: colors.border,
   },
   dateBtnIcon: { fontSize: 16 },
-  dateBtnText: { color: '#fff', fontSize: 14 },
-  dateArrow: { color: '#555', fontSize: 18 },
+  dateBtnText: { color: colors.text, fontSize: 14 },
+  dateArrow: { color: colors.textFaint, fontSize: 18 },
   clearDates: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#333', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
   },
-  clearDatesText: { color: '#aaa', fontSize: 14 },
+  clearDatesText: { color: colors.textSecondary, fontSize: 14 },
   searchBtn: {
-    backgroundColor: '#8b5cf6', borderRadius: 12, padding: 16,
+    backgroundColor: colors.accent, borderRadius: 12, padding: 16,
     alignItems: 'center', marginBottom: 28,
   },
-  searchBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  searchBtnText: { color: colors.text, fontSize: 16, fontWeight: '700' },
   resultsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  resultsHeader: { color: '#888', fontSize: 13 },
-  checkedCount: { color: '#555', fontSize: 12 },
+  resultsHeader: { color: colors.textMuted, fontSize: 13 },
+  checkedCount: { color: colors.textFaint, fontSize: 12 },
   card: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#242424', borderRadius: 12, marginBottom: 12,
-    overflow: 'hidden', borderWidth: 1, borderColor: '#333',
+    backgroundColor: colors.surface, borderRadius: 12, marginBottom: 12,
+    overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
   },
   cardDone: { opacity: 0.4 },
   cardMedia: {
-    width: 80, height: 80, backgroundColor: '#2e2e2e',
+    width: 80, height: 80, backgroundColor: colors.cardAlt,
     alignItems: 'center', justifyContent: 'center',
   },
   cardImage: { width: 80, height: 80 },
   cardEmoji: { fontSize: 34 },
   cardBody: { flex: 1, padding: 12 },
-  cardTitle: { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
-  cardTitleDone: { textDecorationLine: 'line-through', color: '#888' },
-  cardMeta: { color: '#888', fontSize: 12, marginBottom: 4 },
-  cardReason: { color: '#a78bfa', fontSize: 12, fontStyle: 'italic' },
+  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  cardTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },
+  cardMeta: { color: colors.textMuted, fontSize: 12, marginBottom: 4 },
+  cardReason: { color: colors.accent, fontSize: 12, fontStyle: 'italic' },
   checkboxArea: {
     width: 48, alignItems: 'center', justifyContent: 'center', paddingRight: 4,
   },
   checkboxEmpty: {
     width: 28, height: 28, borderRadius: 14,
-    borderWidth: 1.5, borderColor: '#555',
+    borderWidth: 1.5, borderColor: colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxEmptyIcon: { color: '#555', fontSize: 16, lineHeight: 20 },
+  checkboxEmptyIcon: { color: colors.textFaint, fontSize: 16, lineHeight: 20 },
   checkboxDone: {
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: '#444', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
   },
-  checkboxRequested: { backgroundColor: '#1a3a1a' },
-  checkboxSaved: { backgroundColor: '#3a1a2a' },
+  checkboxRequested: { backgroundColor: colors.successBg },
+  checkboxSaved: { backgroundColor: colors.dangerBg },
   checkboxIcon: { fontSize: 14 },
   emptyState: { alignItems: 'center', paddingTop: 40 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { color: '#fff', fontSize: 17, fontWeight: '600', marginBottom: 6 },
-  emptyHint: { color: '#666', fontSize: 14 },
+  emptyText: { color: colors.text, fontSize: 17, fontWeight: '600', marginBottom: 6 },
+  emptyHint: { color: colors.textFaint, fontSize: 14 },
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end',
+    flex: 1, backgroundColor: colors.overlayStrong, justifyContent: 'flex-end',
   },
   calendarSheet: {
-    backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 16, paddingBottom: 36,
   },
-  calendarHint: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 8 },
+  calendarHint: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 8 },
 });

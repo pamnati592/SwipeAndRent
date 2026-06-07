@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  ActivityIndicator, Modal, FlatList, Image,
+  ActivityIndicator, Modal, FlatList, Image, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -12,16 +12,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
 import { TEST_ACCOUNTS } from '../config/testAccounts';
 import type { Item } from '../types/item';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import {
+  ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut,
+} from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
 
 const SESSIONS_KEY = 'sar_test_sessions';
 const CURRENT_KEY  = 'sar_current_label';
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷', gaming: '🎮', camping: '⛺',
-  diy: '🔧', music: '🎸', sports: '⚽',
-};
 
 async function saveCurrent(label: string) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -33,6 +34,8 @@ async function saveCurrent(label: string) {
 }
 
 export default function ProfileScreen() {
+  const { colors, isDark, toggleMode } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
 
   const [loading, setLoading]           = useState(true);
@@ -192,7 +195,6 @@ export default function ProfileScreen() {
 
   function renderItem({ item }: { item: Item }) {
     const cover = item.photos?.find(Boolean);
-    const emoji = CATEGORY_EMOJI[item.category] ?? '📦';
     return (
       <TouchableOpacity
         style={styles.itemCard}
@@ -201,14 +203,19 @@ export default function ProfileScreen() {
       >
         {cover
           ? <Image source={{ uri: cover }} style={styles.itemThumb} resizeMode="cover" />
-          : <View style={styles.itemThumbEmoji}><Text style={styles.itemEmoji}>{emoji}</Text></View>
+          : <View style={styles.itemThumbEmoji}><CategoryIcon category={item.category} size={26} color={colors.textSecondary} /></View>
         }
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
-          {item.city && <Text style={styles.itemCity}>📍 {item.city}</Text>}
+          {item.city && (
+            <View style={styles.itemCityRow}>
+              <MapPin size={12} color={colors.textMuted} />
+              <Text style={styles.itemCity}>{item.city}</Text>
+            </View>
+          )}
         </View>
-        <Text style={styles.itemChevron}>›</Text>
+        <ChevronRight size={20} color={colors.textFaint} />
       </TouchableOpacity>
     );
   }
@@ -216,7 +223,7 @@ export default function ProfileScreen() {
   const initials = (userName ?? activeLabel ?? '?').charAt(0).toUpperCase();
 
   if (loading) {
-    return <SafeAreaView style={styles.container}><ActivityIndicator color="#fff" style={{ flex: 1 }} /></SafeAreaView>;
+    return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.text} style={{ flex: 1 }} /></SafeAreaView>;
   }
 
   return (
@@ -246,13 +253,18 @@ export default function ProfileScreen() {
                 }
                 <View style={styles.avatarEditBadge}>
                   {avatarUploading
-                    ? <ActivityIndicator size="small" color="#000" />
-                    : <Text style={styles.avatarEditIcon}>✎</Text>
+                    ? <ActivityIndicator size="small" color={colors.btnText} />
+                    : <Pencil size={13} color={colors.btnText} />
                   }
                 </View>
               </TouchableOpacity>
               <Text style={styles.userName}>{userName ?? activeLabel ?? 'Unknown'}</Text>
-              {city ? <Text style={styles.userCity}>📍 {city}</Text> : null}
+              {city ? (
+                <View style={styles.userCityRow}>
+                  <MapPin size={13} color={colors.textMuted} />
+                  <Text style={styles.userCity}>{city}</Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Score badges */}
@@ -276,7 +288,7 @@ export default function ProfileScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📦</Text>
+            <Package size={48} color={colors.textFaint} strokeWidth={1.5} />
             <Text style={styles.emptyText}>No active listings</Text>
           </View>
         }
@@ -289,18 +301,30 @@ export default function ProfileScreen() {
             <View style={styles.sheetHandle} />
 
             {[
-              { icon: '📦', label: 'My Items',   onPress: () => { setMenuOpen(false); navigation.navigate('MyItems'); } },
-              { icon: '📋', label: 'My Rentals', onPress: () => { setMenuOpen(false); navigation.navigate('MyRentals'); } },
-              { icon: '❤️', label: 'Wishlist',   onPress: () => { setMenuOpen(false); navigation.navigate('Wishlist'); } },
-              { icon: '🕓', label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
-              { icon: '🔀', label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
-            ].map(row => (
-              <TouchableOpacity key={row.label} style={styles.sheetRow} onPress={row.onPress}>
-                <Text style={styles.sheetRowIcon}>{row.icon}</Text>
-                <Text style={styles.sheetRowLabel}>{row.label}</Text>
-                <Text style={styles.sheetRowArrow}>›</Text>
+              { Icon: Package,       label: 'My Items',   onPress: () => { setMenuOpen(false); navigation.navigate('MyItems'); } },
+              { Icon: ClipboardList, label: 'My Rentals', onPress: () => { setMenuOpen(false); navigation.navigate('MyRentals'); } },
+              { Icon: Heart,         label: 'Wishlist',   onPress: () => { setMenuOpen(false); navigation.navigate('Wishlist'); } },
+              { Icon: Clock,         label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
+              { Icon: Repeat,        label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
+            ].map(({ Icon, label, onPress }) => (
+              <TouchableOpacity key={label} style={styles.sheetRow} onPress={onPress}>
+                <View style={styles.sheetRowIcon}><Icon size={20} color={colors.text} /></View>
+                <Text style={styles.sheetRowLabel}>{label}</Text>
+                <ChevronRight size={18} color={colors.textFaint} />
               </TouchableOpacity>
             ))}
+
+            {/* Theme toggle — light is the default, flip to dark here */}
+            <View style={styles.sheetRow}>
+              <View style={styles.sheetRowIcon}>{isDark ? <Moon size={20} color={colors.text} /> : <Sun size={20} color={colors.text} />}</View>
+              <Text style={styles.sheetRowLabel}>Dark Mode</Text>
+              <Switch
+                value={isDark}
+                onValueChange={toggleMode}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
 
             <TouchableOpacity
               style={[styles.sheetRow, styles.sheetRowDanger, logoutLoading && { opacity: 0.5 }]}
@@ -308,8 +332,8 @@ export default function ProfileScreen() {
               disabled={logoutLoading}
             >
               {logoutLoading
-                ? <ActivityIndicator color="#e57373" size="small" style={{ marginRight: 12 }} />
-                : <Text style={styles.sheetRowIcon}>🚪</Text>
+                ? <ActivityIndicator color={colors.dangerSoft} size="small" style={{ marginRight: 12 }} />
+                : <View style={styles.sheetRowIcon}><LogOut size={20} color={colors.dangerSoft} /></View>
               }
               <Text style={[styles.sheetRowLabel, styles.sheetRowLabelDanger]}>Log out</Text>
             </TouchableOpacity>
@@ -335,7 +359,7 @@ export default function ProfileScreen() {
                   disabled={!!switchingTo}
                 >
                   {switchingTo === account.label
-                    ? <ActivityIndicator color="#000" size="small" />
+                    ? <ActivityIndicator color={colors.btnText} size="small" />
                     : (
                       <>
                         <View style={[styles.accountAvatar, isActive && styles.accountAvatarActive]}>
@@ -363,8 +387,8 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
 
   listContent: { paddingBottom: 40 },
 
@@ -374,106 +398,108 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
   },
-  screenTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  screenTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text },
   menuBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  menuBtnText: { fontSize: 26, color: '#fff', fontWeight: '300' },
+  menuBtnText: { fontSize: 26, color: colors.text, fontWeight: '300' },
 
   avatarSection: { alignItems: 'center', paddingVertical: 24, gap: 8 },
   avatarWrapper: { position: 'relative' },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#3a3a3a', borderWidth: 1, borderColor: '#4a4a4a',
+    backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarImage: { width: 80, height: 80, borderRadius: 40, borderWidth: 1, borderColor: '#4a4a4a' },
-  avatarInitial: { fontSize: 32, fontWeight: '700', color: '#fff' },
+  avatarImage: { width: 80, height: 80, borderRadius: 40, borderWidth: 1, borderColor: colors.borderStrong },
+  avatarInitial: { fontSize: 32, fontWeight: '700', color: colors.text },
   avatarEditBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 24, height: 24, borderRadius: 12,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#1a1a1a',
+    backgroundColor: colors.btn, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: colors.bg,
   },
-  avatarEditIcon: { fontSize: 13, color: '#000', fontWeight: '600' },
-  userName: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  userCity: { fontSize: 14, color: '#888' },
+  avatarEditIcon: { fontSize: 13, color: colors.btnText, fontWeight: '600' },
+  userName: { fontSize: 22, fontWeight: '700', color: colors.text },
+  userCityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  userCity: { fontSize: 14, color: colors.textMuted },
 
   scoreRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginHorizontal: 40, marginBottom: 28,
-    backgroundColor: '#242424', borderRadius: 16,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border,
     paddingVertical: 16,
   },
   scoreBadge: { flex: 1, alignItems: 'center', gap: 4 },
-  scoreValue: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  scoreLabel: { fontSize: 12, color: '#666', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
-  scoreDivider: { width: 1, height: 36, backgroundColor: '#2a2a2a' },
+  scoreValue: { fontSize: 22, fontWeight: '700', color: colors.text },
+  scoreLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
+  scoreDivider: { width: 1, height: 36, backgroundColor: colors.card },
 
   sectionTitle: {
-    fontSize: 11, fontWeight: '600', color: '#555',
+    fontSize: 11, fontWeight: '600', color: colors.textFaint,
     letterSpacing: 1, paddingHorizontal: 20, marginBottom: 12,
   },
 
   itemCard: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: '#242424', borderRadius: 14,
-    borderWidth: 1, borderColor: '#2a2a2a', overflow: 'hidden',
+    backgroundColor: colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
   },
   itemThumb: { width: 72, height: 72 },
   itemThumbEmoji: {
-    width: 72, height: 72, backgroundColor: '#2a2a2a',
+    width: 72, height: 72, backgroundColor: colors.card,
     alignItems: 'center', justifyContent: 'center',
   },
   itemEmoji: { fontSize: 28 },
   itemInfo: { flex: 1, paddingHorizontal: 14, gap: 3 },
-  itemTitle: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  itemPrice: { fontSize: 13, color: '#888' },
-  itemCity: { fontSize: 12, color: '#555' },
-  itemChevron: { fontSize: 22, color: '#444', paddingRight: 14, fontWeight: '300' },
+  itemTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
+  itemPrice: { fontSize: 13, color: colors.textMuted },
+  itemCityRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  itemCity: { fontSize: 12, color: colors.textFaint },
+  itemChevron: { fontSize: 22, color: colors.textFaint, paddingRight: 14, fontWeight: '300' },
 
   empty: { alignItems: 'center', paddingTop: 40, gap: 8 },
   emptyIcon: { fontSize: 40 },
-  emptyText: { fontSize: 15, color: '#555' },
+  emptyText: { fontSize: 15, color: colors.textFaint },
 
   // Bottom sheet
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: '#242424', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12, gap: 4,
   },
-  sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
+  sheetHandle: { width: 40, height: 4, backgroundColor: colors.cardAlt, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
 
   sheetRow: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#2e2e2e',
+    paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   sheetRowDanger: { borderBottomWidth: 0, marginTop: 8 },
-  sheetRowIcon: { fontSize: 20, width: 28, textAlign: 'center' },
-  sheetRowLabel: { flex: 1, fontSize: 16, color: '#fff', fontWeight: '500' },
-  sheetRowLabelDanger: { color: '#e57373' },
-  sheetRowArrow: { fontSize: 20, color: '#444' },
+  sheetRowIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  sheetRowLabel: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '500' },
+  sheetRowLabelDanger: { color: colors.dangerSoft },
+  sheetRowArrow: { fontSize: 20, color: colors.textFaint },
 
   // Switch user
-  switchTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  switchSubtitle: { fontSize: 13, color: '#666', marginBottom: 12 },
+  switchTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  switchSubtitle: { fontSize: 13, color: colors.textFaint, marginBottom: 12 },
   accountBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#2a2a2a', borderRadius: 12,
+    backgroundColor: colors.card, borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 14,
-    borderWidth: 1, borderColor: '#3a3a3a', minHeight: 56, justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border, minHeight: 56, justifyContent: 'center',
     marginBottom: 8,
   },
-  accountBtnActive: { borderColor: '#4caf50', backgroundColor: '#1a2a1a' },
+  accountBtnActive: { borderColor: colors.success, backgroundColor: colors.successBg },
   accountAvatar: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
   },
-  accountAvatarActive: { backgroundColor: '#4caf50' },
-  accountAvatarText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  accountLabel: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  accountEmail: { fontSize: 12, color: '#666', marginTop: 2 },
-  activeDot: { fontSize: 12, color: '#4caf50', fontWeight: '600' },
+  accountAvatarActive: { backgroundColor: colors.success },
+  accountAvatarText: { fontSize: 16, fontWeight: '700', color: colors.text },
+  accountLabel: { fontSize: 16, fontWeight: '600', color: colors.text },
+  accountEmail: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+  activeDot: { fontSize: 12, color: colors.success, fontWeight: '600' },
   cancelBtn: { height: 48, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  cancelText: { color: '#fff', fontSize: 15 },
+  cancelText: { color: colors.text, fontSize: 15 },
 });

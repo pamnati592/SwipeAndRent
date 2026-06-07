@@ -10,19 +10,14 @@ import type { Item } from '../types/item';
 import { supabase } from '../services/supabase';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { formatDistance } from '../utils/format';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { MapPin, X, Heart } from 'lucide-react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 320);
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷',
-  gaming: '🎮',
-  camping: '⛺',
-  diy: '🔧',
-  music: '🎸',
-  sports: '⚽',
-};
 
 // Radius slider
 const THUMB_D = 26;
@@ -47,6 +42,8 @@ type Props = {
 };
 
 export default function HomeScreen({ navigation }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -149,7 +146,7 @@ export default function HomeScreen({ navigation }: Props) {
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name, description, category..."
-          placeholderTextColor="#888"
+          placeholderTextColor={colors.textMuted}
           value={query}
           onChangeText={setQuery}
           autoCorrect={false}
@@ -162,7 +159,7 @@ export default function HomeScreen({ navigation }: Props) {
 
       {loading ? (
         <View style={styles.feed}>
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.text} />
         </View>
       ) : currentItem === null ? (
         <View style={styles.feed}>
@@ -190,7 +187,8 @@ export default function HomeScreen({ navigation }: Props) {
               const distance = formatDistance(currentItem.distance_meters);
               return distance ? (
                 <View style={styles.distanceBadge} pointerEvents="none">
-                  <Text style={styles.distanceBadgeText}>📍 {distance}</Text>
+                  <MapPin size={11} color={colors.scrimText} />
+                  <Text style={styles.distanceBadgeText}>{distance}</Text>
                 </View>
               ) : null;
             })()}
@@ -198,14 +196,19 @@ export default function HomeScreen({ navigation }: Props) {
               <Text style={styles.itemTitle}>{currentItem.title}</Text>
               <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
               <Text style={styles.itemPrice}>₪{currentItem.daily_price}/day</Text>
-              {currentItem.city && <Text style={styles.itemDistance}>📍 {currentItem.city}</Text>}
+              {currentItem.city && (
+                <View style={styles.cityRow}>
+                  <MapPin size={13} color={colors.textMuted} />
+                  <Text style={styles.itemDistance}>{currentItem.city}</Text>
+                </View>
+              )}
             </View>
             <View style={styles.swipeButtons}>
               <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
-                <Text style={styles.swipeBtnText}>✕</Text>
+                <X size={24} color={colors.textSecondary} strokeWidth={2.4} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('right')}>
-                <Text style={styles.swipeBtnText}>♥</Text>
+                <Heart size={24} color={colors.danger} fill={colors.danger} />
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -225,6 +228,8 @@ function RadiusSlider({
   value: number;
   onChange: (v: number) => void;
 }) {
+  const { colors } = useTheme();
+  const sliderStyles = useMemo(() => makeSliderStyles(colors), [colors]);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   useEffect(() => { valueRef.current = value; }, [value]);
@@ -284,9 +289,11 @@ function RadiusSlider({
   );
 }
 
-// ── Card image with emoji fallback ────────────────────────────────────────────
+// ── Card image with category-icon fallback ────────────────────────────────────
 
 function CardImage({ item }: { item: Item }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [failed, setFailed] = useState(false);
   const mainPhoto = item.photos?.filter(Boolean)[0];
 
@@ -302,77 +309,79 @@ function CardImage({ item }: { item: Item }) {
   }
   return (
     <View style={styles.cardPhotoFallback}>
-      <Text style={styles.itemEmoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+      <CategoryIcon category={item.category} size={72} color={colors.textMuted} strokeWidth={1.5} />
     </View>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
   topBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: '#242424', borderBottomWidth: 1, borderBottomColor: '#333',
+    backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border,
   },
   searchInput: {
-    flex: 1, height: 40, backgroundColor: '#2a2a2a',
-    borderWidth: 1, borderColor: '#3a3a3a', borderRadius: 8,
-    paddingHorizontal: 12, color: '#fff', fontSize: 14,
+    flex: 1, height: 40, backgroundColor: c.card,
+    borderWidth: 1, borderColor: c.border, borderRadius: 8,
+    paddingHorizontal: 12, color: c.text, fontSize: 14,
   },
   feed: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   card: {
     width: CARD_WIDTH, height: 460,
-    backgroundColor: '#2a2a2a', borderRadius: 16,
-    borderWidth: 2, borderColor: '#3a3a3a', overflow: 'hidden',
+    backgroundColor: c.card, borderRadius: 16,
+    borderWidth: 2, borderColor: c.border, overflow: 'hidden',
   },
   backCard: { position: 'absolute', transform: [{ scale: 0.95 }], opacity: 0.5 },
-  cardPhoto: { width: CARD_WIDTH, height: 220, borderBottomWidth: 1, borderBottomColor: '#3a3a3a' },
+  cardPhoto: { width: CARD_WIDTH, height: 220, borderBottomWidth: 1, borderBottomColor: c.border },
   cardPhotoFallback: {
     width: CARD_WIDTH, height: 220,
-    backgroundColor: '#333', alignItems: 'center', justifyContent: 'center',
-    borderBottomWidth: 1, borderBottomColor: '#3a3a3a',
+    backgroundColor: c.chip, alignItems: 'center', justifyContent: 'center',
+    borderBottomWidth: 1, borderBottomColor: c.border,
   },
   itemEmoji: { fontSize: 64 },
   distanceBadge: {
     position: 'absolute', top: 12, right: 12,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: c.overlayStrong,
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
-  distanceBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  distanceBadgeText: { color: c.scrimText, fontSize: 12, fontWeight: '600' },
   cardContent: { padding: 16, gap: 4 },
-  itemTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  itemSubtitle: { fontSize: 14, color: '#888' },
-  itemPrice: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginTop: 8 },
-  itemDistance: { fontSize: 13, color: '#888' },
+  itemTitle: { fontSize: 18, fontWeight: 'bold', color: c.text },
+  itemSubtitle: { fontSize: 14, color: c.textMuted },
+  itemPrice: { fontSize: 20, fontWeight: 'bold', color: c.text, marginTop: 8 },
+  cityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  itemDistance: { fontSize: 13, color: c.textMuted },
   swipeButtons: {
     position: 'absolute', bottom: 16, left: 0, right: 0,
     flexDirection: 'row', justifyContent: 'center', gap: 24,
   },
   swipeBtn: {
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#242424', borderWidth: 2, borderColor: '#3a3a3a',
+    backgroundColor: c.surface, borderWidth: 2, borderColor: c.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  swipeBtnText: { fontSize: 22, color: '#fff' },
-  emptyText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  emptySubtext: { fontSize: 14, color: '#666' },
+  swipeBtnText: { fontSize: 22, color: c.text },
+  emptyText: { fontSize: 18, fontWeight: 'bold', color: c.text },
+  emptySubtext: { fontSize: 14, color: c.textFaint },
 });
 
-const sliderStyles = StyleSheet.create({
+const makeSliderStyles = (c: ThemeColors) => StyleSheet.create({
   wrapper: {
     paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12,
-    backgroundColor: '#1f1f1f',
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    backgroundColor: c.surface,
+    borderBottomWidth: 1, borderBottomColor: c.border,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 10,
   },
-  headerKey: { color: '#888', fontSize: 12, fontWeight: '500' },
-  headerVal: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  headerKey: { color: c.textMuted, fontSize: 12, fontWeight: '500' },
+  headerVal: { color: c.text, fontSize: 13, fontWeight: '700' },
   trackWrap: {
     height: THUMB_D,
     justifyContent: 'center',
@@ -382,23 +391,23 @@ const sliderStyles = StyleSheet.create({
     left: THUMB_D / 2,
     right: THUMB_D / 2,
     height: 3, borderRadius: 1.5,
-    backgroundColor: '#3a3a3a',
+    backgroundColor: c.border,
   },
   trackFill: {
     position: 'absolute',
     left: THUMB_D / 2,
     height: 3, borderRadius: 1.5,
-    backgroundColor: '#ffffff',
+    backgroundColor: c.text,
   },
   thumb: {
     position: 'absolute',
     width: THUMB_D, height: THUMB_D, borderRadius: THUMB_D / 2,
-    backgroundColor: '#ffffff',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    backgroundColor: c.text,
+    shadowColor: c.black, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35, shadowRadius: 4, elevation: 5,
   },
   endLabels: {
     flexDirection: 'row', justifyContent: 'space-between', marginTop: 6,
   },
-  endLabel: { color: '#555', fontSize: 11 },
+  endLabel: { color: c.textFaint, fontSize: 11 },
 });

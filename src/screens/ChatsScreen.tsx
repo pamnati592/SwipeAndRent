@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
@@ -7,6 +7,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { MessageCircle, Package } from 'lucide-react-native';
 
 type ConversationRow = {
   id: string;
@@ -26,6 +29,8 @@ type Props = {
 };
 
 export default function ChatsScreen({ navigation }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,7 +104,7 @@ export default function ChatsScreen({ navigation }: Props) {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+        <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
       </SafeAreaView>
     );
   }
@@ -110,7 +115,7 @@ export default function ChatsScreen({ navigation }: Props) {
 
       {conversations.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>💬</Text>
+          <MessageCircle size={48} color={colors.textFaint} strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>No conversations yet</Text>
           <Text style={styles.emptySubtext}>Tap "Chat" on any item to start one</Text>
         </View>
@@ -152,7 +157,10 @@ export default function ChatsScreen({ navigation }: Props) {
                       {formatTime(conv.last_message_at)}
                     </Text>
                   </View>
-                  <Text style={styles.itemTitle} numberOfLines={1}>📦 {conv.item_title}</Text>
+                  <View style={styles.itemTitleRow}>
+                    <Package size={12} color={colors.textMuted} />
+                    <Text style={styles.itemTitle} numberOfLines={1}>{conv.item_title}</Text>
+                  </View>
                   <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
                     {conv.last_message ?? 'No messages yet'}
                   </Text>
@@ -166,37 +174,38 @@ export default function ChatsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
-    fontSize: 24, fontWeight: 'bold', color: '#fff',
+    fontSize: 24, fontWeight: 'bold', color: colors.text,
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 60 },
   emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
-  emptySubtext: { fontSize: 14, color: '#666' },
-  separator: { height: 1, backgroundColor: '#2a2a2a', marginLeft: 76 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
+  emptySubtext: { fontSize: 14, color: colors.textFaint },
+  separator: { height: 1, backgroundColor: colors.card, marginLeft: 76 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   avatar: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontSize: 20, color: '#fff', fontWeight: '600' },
+  avatarText: { fontSize: 20, color: colors.text, fontWeight: '600' },
   avatarDot: {
     position: 'absolute', top: 0, right: 0,
     width: 14, height: 14, borderRadius: 7,
-    backgroundColor: '#4cd964', borderWidth: 2, borderColor: '#1a1a1a',
+    backgroundColor: colors.success, borderWidth: 2, borderColor: colors.bg,
   },
   rowContent: { flex: 1, gap: 2 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  userName: { fontSize: 15, fontWeight: '600', color: '#fff', flex: 1, marginRight: 8 },
-  userNameUnread: { color: '#fff', fontWeight: '700' },
-  time: { fontSize: 12, color: '#666' },
-  timeUnread: { color: '#4cd964', fontWeight: '600' },
-  itemTitle: { fontSize: 12, color: '#666' },
-  lastMessage: { fontSize: 13, color: '#888', marginTop: 1 },
-  lastMessageUnread: { color: '#fff', fontWeight: '500' },
+  userName: { fontSize: 15, fontWeight: '600', color: colors.text, flex: 1, marginRight: 8 },
+  userNameUnread: { color: colors.text, fontWeight: '700' },
+  time: { fontSize: 12, color: colors.textFaint },
+  timeUnread: { color: colors.success, fontWeight: '600' },
+  itemTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  itemTitle: { fontSize: 12, color: colors.textFaint, flexShrink: 1 },
+  lastMessage: { fontSize: 13, color: colors.textMuted, marginTop: 1 },
+  lastMessageUnread: { color: colors.text, fontWeight: '500' },
 });

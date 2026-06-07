@@ -38,6 +38,12 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "SwipeAndRent needs camera access to scan the rental QR code during item pickup and return."
+        }
+      ],
+      [
         "@stripe/stripe-react-native",
         {
           "merchantIdentifier": "merchant.com.swipeandrentapp",

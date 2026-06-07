@@ -1,12 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../services/auth.service';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { ChevronLeft } from 'lucide-react-native';
 
 export default function LoginScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -87,7 +92,7 @@ export default function LoginScreen() {
             <TextInput
               style={styles.input}
               placeholder="Email"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textFaint}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -97,7 +102,7 @@ export default function LoginScreen() {
             <TextInput
               style={styles.input}
               placeholder="Password"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textFaint}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -105,7 +110,7 @@ export default function LoginScreen() {
 
             <TouchableOpacity style={styles.primaryButton} onPress={handleEmailAuth} disabled={loading}>
               {loading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={colors.btnText} />
                 : <Text style={styles.primaryButtonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
               }
             </TouchableOpacity>
@@ -116,8 +121,9 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowEmailForm(false)}>
-              <Text style={styles.backText}>← Back</Text>
+            <TouchableOpacity onPress={() => setShowEmailForm(false)} style={styles.backRow}>
+              <ChevronLeft size={18} color={colors.textSecondary} />
+              <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -127,52 +133,53 @@ export default function LoginScreen() {
 
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#fff" />
+          <ActivityIndicator size="large" color={colors.text} />
         </View>
       )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   inner: { flex: 1, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 40, paddingHorizontal: 24 },
   logoContainer: { alignItems: 'center' },
   logo: {
-    width: 80, height: 80, backgroundColor: '#3a3a3a',
+    width: 80, height: 80, backgroundColor: colors.cardAlt,
     borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 24,
   },
-  logoText: { fontSize: 22, fontWeight: 'bold', color: '#aaa' },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#888' },
+  logoText: { fontSize: 22, fontWeight: 'bold', color: colors.textSecondary },
+  title: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  subtitle: { fontSize: 14, color: colors.textMuted },
   buttonsContainer: { width: '100%', gap: 12 },
-  formTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
+  formTitle: { fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
   socialButton: {
-    width: '100%', height: 48, backgroundColor: '#2a2a2a',
-    borderWidth: 2, borderColor: '#3a3a3a', borderRadius: 8,
+    width: '100%', height: 48, backgroundColor: colors.card,
+    borderWidth: 2, borderColor: colors.border, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center',
   },
-  socialButtonText: { color: '#fff', fontSize: 14 },
-  disabledText: { color: '#555' },
+  socialButtonText: { color: colors.text, fontSize: 14 },
+  disabledText: { color: colors.textFaint },
   dividerContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#3a3a3a' },
-  dividerText: { color: '#666', fontSize: 12 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.cardAlt },
+  dividerText: { color: colors.textFaint, fontSize: 12 },
   input: {
-    width: '100%', height: 48, backgroundColor: '#2a2a2a',
-    borderWidth: 2, borderColor: '#3a3a3a', borderRadius: 8,
-    paddingHorizontal: 16, color: '#fff', fontSize: 14,
+    width: '100%', height: 48, backgroundColor: colors.card,
+    borderWidth: 2, borderColor: colors.border, borderRadius: 8,
+    paddingHorizontal: 16, color: colors.text, fontSize: 14,
   },
   primaryButton: {
-    width: '100%', height: 48, backgroundColor: '#fff',
+    width: '100%', height: 48, backgroundColor: colors.btn,
     borderRadius: 8, alignItems: 'center', justifyContent: 'center',
   },
-  primaryButtonText: { color: '#000', fontSize: 15, fontWeight: '600' },
-  toggleText: { color: '#888', fontSize: 13, textAlign: 'center' },
-  backText: { color: '#666', fontSize: 13, textAlign: 'center' },
-  terms: { fontSize: 12, color: '#555', textAlign: 'center' },
+  primaryButtonText: { color: colors.btnText, fontSize: 15, fontWeight: '600' },
+  toggleText: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
+  backRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
+  backText: { color: colors.textFaint, fontSize: 13, textAlign: 'center' },
+  terms: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.overlay,
     alignItems: 'center', justifyContent: 'center',
   },
 });

@@ -1,12 +1,16 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
 
 export default function PhoneVerificationScreen({ onVerified }: { onVerified: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -84,7 +88,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
               <TextInput
                 style={styles.input}
                 placeholder="+972 50 000 0000"
-                placeholderTextColor="#555"
+                placeholderTextColor={colors.textFaint}
                 keyboardType="phone-pad"
                 value={phone}
                 onChangeText={setPhone}
@@ -95,7 +99,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
             <Text style={styles.note}>Standard SMS rates may apply</Text>
 
             <TouchableOpacity style={styles.button} onPress={sendCode} disabled={loading || !phone.trim()}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send code</Text>}
+              {loading ? <ActivityIndicator color={colors.text} /> : <Text style={styles.buttonText}>Send code</Text>}
             </TouchableOpacity>
           </>
         ) : (
@@ -121,7 +125,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
             <Text style={styles.note}>Dev mode: use 123456 to bypass SMS verification</Text>
 
             <TouchableOpacity style={styles.button} onPress={verifyCode} disabled={loading || otp.join('').length < 6}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify code</Text>}
+              {loading ? <ActivityIndicator color={colors.text} /> : <Text style={styles.buttonText}>Verify code</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setStep('phone')} style={styles.backLink}>
@@ -134,31 +138,31 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   inner: { flex: 1, paddingHorizontal: 24, paddingTop: 32 },
   progressBar: { flexDirection: 'row', gap: 4, marginBottom: 32 },
-  progressDot: { flex: 1, height: 4, backgroundColor: '#3a3a3a', borderRadius: 2 },
-  progressDotActive: { backgroundColor: '#888' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#888', marginBottom: 32 },
+  progressDot: { flex: 1, height: 4, backgroundColor: colors.cardAlt, borderRadius: 2 },
+  progressDotActive: { backgroundColor: colors.textMuted },
+  title: { fontSize: 22, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  subtitle: { fontSize: 14, color: colors.textMuted, marginBottom: 32 },
   field: { marginBottom: 8 },
-  label: { fontSize: 14, color: '#888', marginBottom: 8 },
+  label: { fontSize: 14, color: colors.textMuted, marginBottom: 8 },
   input: {
-    height: 48, backgroundColor: '#2a2a2a', borderWidth: 2,
-    borderColor: '#3a3a3a', borderRadius: 8, paddingHorizontal: 16, color: '#fff', fontSize: 16,
+    height: 48, backgroundColor: colors.card, borderWidth: 2,
+    borderColor: colors.border, borderRadius: 8, paddingHorizontal: 16, color: colors.text, fontSize: 16,
   },
-  note: { fontSize: 12, color: '#555', marginBottom: 32 },
+  note: { fontSize: 12, color: colors.textFaint, marginBottom: 32 },
   button: {
-    height: 48, backgroundColor: '#3a3a3a', borderRadius: 8,
+    height: 48, backgroundColor: colors.cardAlt, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center', marginTop: 'auto', marginBottom: 16,
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  buttonText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   otpRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginBottom: 40 },
   otpInput: {
-    width: 44, height: 56, backgroundColor: '#2a2a2a', borderWidth: 2,
-    borderColor: '#3a3a3a', borderRadius: 8, textAlign: 'center', color: '#fff', fontSize: 22,
+    width: 44, height: 56, backgroundColor: colors.card, borderWidth: 2,
+    borderColor: colors.border, borderRadius: 8, textAlign: 'center', color: colors.text, fontSize: 22,
   },
   backLink: { alignItems: 'center', marginBottom: 16 },
-  backLinkText: { color: '#888', fontSize: 14 },
+  backLinkText: { color: colors.textMuted, fontSize: 14 },
 });

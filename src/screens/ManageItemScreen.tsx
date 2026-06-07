@@ -8,6 +8,9 @@ import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { ChevronLeft, X } from 'lucide-react-native';
 
 // Single type for all rental states
 type RentalRange = { id: string; start: string; end: string; renterName: string; status: string; conversationId: string | null };
@@ -23,15 +26,18 @@ const STATUS_LABEL: Record<string, string> = {
   active:   'Paid',
 };
 
-const PENDING_COLOR  = { bg: '#3a2a00', text: '#f0a500' };
-const APPROVED_COLOR = { bg: '#0a1a4a', text: '#4da6ff' };
-const PAID_COLOR     = { bg: '#0a2a1a', text: '#4cd964' };
-const BLOCKED_COLOR  = { bg: '#3a0a0a', text: '#f44336' };
+const statusPalette = (c: ThemeColors) => ({
+  pending:  { bg: c.warningBg, text: c.warning },
+  approved: { bg: c.infoBg,    text: c.primary },
+  paid:     { bg: c.successBg, text: c.success },
+  blocked:  { bg: c.dangerBg,  text: c.danger },
+});
 
-function statusColor(status: string) {
-  if (status === 'approved') return APPROVED_COLOR;
-  if (status === 'active')   return PAID_COLOR;
-  return PENDING_COLOR;
+function statusColor(colors: ThemeColors, status: string) {
+  const p = statusPalette(colors);
+  if (status === 'approved') return p.approved;
+  if (status === 'active')   return p.paid;
+  return p.pending;
 }
 
 function fmt(iso: string): string {
@@ -54,11 +60,12 @@ function buildCalendarMarks(
   blockedRanges: BlockedRange[],
   selStart: string | null,
   selEnd: string | null,
+  colors: ThemeColors,
 ): Record<string, any> {
   const marks: Record<string, any> = {};
 
   rentalRanges.forEach(r => {
-    const c = statusColor(r.status);
+    const c = statusColor(colors, r.status);
     expandRange(r.start, r.end).forEach((d, i, arr) => {
       marks[d] = { color: c.bg, textColor: c.text, startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
@@ -66,14 +73,14 @@ function buildCalendarMarks(
 
   blockedRanges.forEach(r => {
     expandRange(r.blocked_from, r.blocked_to).forEach((d, i, arr) => {
-      marks[d] = { color: BLOCKED_COLOR.bg, textColor: BLOCKED_COLOR.text, startingDay: i === 0, endingDay: i === arr.length - 1 };
+      marks[d] = { color: colors.dangerBg, textColor: colors.danger, startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
   });
 
   if (selStart) {
     const end = selEnd ?? selStart;
     expandRange(selStart, end).forEach((d, i, arr) => {
-      marks[d] = { color: '#fff', textColor: '#000', startingDay: i === 0, endingDay: i === arr.length - 1 };
+      marks[d] = { color: colors.text, textColor: colors.btnText, startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
   }
 
@@ -81,6 +88,8 @@ function buildCalendarMarks(
 }
 
 export default function ManageItemScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { itemId, itemTitle } = route.params;
 
   const [rentalRanges,  setRentalRanges]  = useState<RentalRange[]>([]);
@@ -206,7 +215,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     if (!error) setBlockedRanges(prev => prev.filter(r => r.id !== id));
   }
 
-  const markedDates = buildCalendarMarks(rentalRanges, blockedRanges, selStart, selEnd);
+  const markedDates = buildCalendarMarks(rentalRanges, blockedRanges, selStart, selEnd, colors);
   const selectionHint = !selStart
     ? 'Tap a free date to start blocking'
     : !selEnd
@@ -217,7 +226,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>←</Text>
+          <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={styles.title}>Manage Item</Text>
@@ -226,17 +235,17 @@ export default function ManageItemScreen({ navigation, route }: Props) {
       </View>
 
       {loading ? (
-        <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+        <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* Legend */}
           <View style={styles.legend}>
             {[
-              { color: PENDING_COLOR.text,  label: 'Pending' },
-              { color: APPROVED_COLOR.text, label: 'Approved' },
-              { color: PAID_COLOR.text,     label: 'Paid' },
-              { color: BLOCKED_COLOR.text,  label: 'Blocked' },
+              { color: colors.warning, label: 'Pending' },
+              { color: colors.primary, label: 'Approved' },
+              { color: colors.success, label: 'Paid' },
+              { color: colors.danger,  label: 'Blocked' },
             ].map(({ color, label }) => (
               <View key={label} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: color }]} />
@@ -251,15 +260,15 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             onDayPress={onDayPress}
             minDate={TODAY}
             theme={{
-              backgroundColor: '#1a1a1a',
-              calendarBackground: '#1a1a1a',
-              textSectionTitleColor: '#555',
-              dayTextColor: '#fff',
-              todayTextColor: '#8b5cf6',
+              backgroundColor: colors.bg,
+              calendarBackground: colors.bg,
+              textSectionTitleColor: colors.textFaint,
+              dayTextColor: colors.text,
+              todayTextColor: colors.accent,
               todayBackgroundColor: 'transparent',
-              arrowColor: '#fff',
-              monthTextColor: '#fff',
-              textDisabledColor: '#333',
+              arrowColor: colors.text,
+              monthTextColor: colors.text,
+              textDisabledColor: colors.textFaint,
             }}
           />
 
@@ -272,7 +281,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
               disabled={!selStart || !selEnd || saving}
             >
               {saving
-                ? <ActivityIndicator color="#000" size="small" />
+                ? <ActivityIndicator color={colors.btnText} size="small" />
                 : <Text style={styles.addBtnText}>Block these dates</Text>
               }
             </TouchableOpacity>
@@ -289,10 +298,10 @@ export default function ManageItemScreen({ navigation, route }: Props) {
               <Text style={styles.sectionTitle}>Blocked Periods</Text>
               {blockedRanges.map(r => (
                 <View key={r.id} style={styles.rangeRow}>
-                  <View style={[styles.rangeColorBar, { backgroundColor: BLOCKED_COLOR.text }]} />
+                  <View style={[styles.rangeColorBar, { backgroundColor: colors.danger }]} />
                   <Text style={[styles.rangeText, { flex: 1 }]}>{fmt(r.blocked_from)} → {fmt(r.blocked_to)}</Text>
                   <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteRange(r.id)}>
-                    <Text style={styles.deleteBtnText}>✕</Text>
+                    <X size={16} color={colors.danger} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -304,7 +313,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Rentals</Text>
               {rentalRanges.map(r => {
-                const c = statusColor(r.status);
+                const c = statusColor(colors, r.status);
                 return (
                   <TouchableOpacity
                     key={r.id}
@@ -336,59 +345,59 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backText: { color: '#fff', fontSize: 22, fontWeight: '300' },
+  backText: { color: colors.text, fontSize: 22, fontWeight: '300' },
   headerText: { flex: 1 },
-  title: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  subtitle: { fontSize: 13, color: '#666', marginTop: 1 },
+  title: { fontSize: 18, fontWeight: '700', color: colors.text },
+  subtitle: { fontSize: 13, color: colors.textFaint, marginTop: 1 },
 
   scroll: { padding: 16, paddingBottom: 40 },
 
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 9, height: 9, borderRadius: 5 },
-  legendLabel: { color: '#888', fontSize: 11 },
+  legendLabel: { color: colors.textMuted, fontSize: 11 },
 
   addSection: { marginTop: 16, alignItems: 'center', gap: 10 },
-  addHint: { color: '#888', fontSize: 13 },
+  addHint: { color: colors.textMuted, fontSize: 13 },
   addBtn: {
-    width: '100%', height: 48, backgroundColor: '#fff',
+    width: '100%', height: 48, backgroundColor: colors.btn,
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
   },
   addBtnDisabled: { opacity: 0.3 },
-  addBtnText: { color: '#000', fontSize: 15, fontWeight: '700' },
-  clearSelText: { color: '#555', fontSize: 13 },
+  addBtnText: { color: colors.btnText, fontSize: 15, fontWeight: '700' },
+  clearSelText: { color: colors.textFaint, fontSize: 13 },
 
   section: { marginTop: 24 },
   sectionTitle: {
-    fontSize: 11, color: '#555', fontWeight: '600',
+    fontSize: 11, color: colors.textFaint, fontWeight: '600',
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
   },
   rangeRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#242424', borderRadius: 10,
+    backgroundColor: colors.surface, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 12,
-    marginBottom: 8, borderWidth: 1, borderColor: '#2e2e2e',
+    marginBottom: 8, borderWidth: 1, borderColor: colors.border,
   },
   rangeColorBar: { width: 3, height: 36, borderRadius: 2 },
   rangeInfo: { flex: 1 },
-  rangeText: { color: '#ccc', fontSize: 14 },
-  rangeRenter: { color: '#666', fontSize: 12, marginTop: 2 },
+  rangeText: { color: colors.textSecondary, fontSize: 14 },
+  rangeRenter: { color: colors.textFaint, fontSize: 12, marginTop: 2 },
   statusBadge: {
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: 8, borderWidth: 1,
   },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
-  chevron: { fontSize: 18, color: '#555', fontWeight: '300' },
-  chatNote: { color: '#444', fontSize: 11, marginTop: 6, lineHeight: 16 },
+  chevron: { fontSize: 18, color: colors.textFaint, fontWeight: '300' },
+  chatNote: { color: colors.textFaint, fontSize: 11, marginTop: 6, lineHeight: 16 },
 
   deleteBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  deleteBtnText: { color: '#f44336', fontSize: 14, fontWeight: '600' },
+  deleteBtnText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
 });

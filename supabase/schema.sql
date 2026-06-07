@@ -13,7 +13,7 @@ create extension if not exists postgis;
 create type auth_method as enum ('google', 'apple', 'facebook', 'email');
 create type user_role as enum ('renter', 'lender', 'both');
 create type item_status as enum ('draft', 'pending', 'live', 'rented');
-create type transaction_status as enum ('pending', 'active', 'completed', 'disputed', 'cancelled');
+create type transaction_status as enum ('pending', 'approved', 'rejected', 'paid', 'active', 'completed', 'disputed', 'cancelled');
 
 -- ============================================================
 -- PROFILES
@@ -91,7 +91,14 @@ create table public.transactions (
   total_price  numeric(10, 2) not null,
   status       transaction_status not null default 'pending',
   stripe_payment_intent_id text,
-  qr_token     text unique,               -- one-time token for QR scan
+  qr_token     text unique,               -- one-time token for the pickup QR scan
+  return_qr_token text unique,            -- one-time token for the return QR scan
+  picked_up_at  timestamptz,              -- set when the pickup QR is scanned
+  returned_at   timestamptz,              -- set when the return QR is scanned
+  pickup_renter_ok boolean not null default false,  -- condition checklist confirmations
+  pickup_lender_ok boolean not null default false,
+  return_renter_ok boolean not null default false,
+  return_lender_ok boolean not null default false,
   created_at   timestamptz not null default now()
 );
 

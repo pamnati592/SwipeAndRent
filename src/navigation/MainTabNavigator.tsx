@@ -1,6 +1,8 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View } from 'react-native';
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import { House, Sparkles, MessageCircle, User, Plus, type LucideIcon } from 'lucide-react-native';
+import { useTheme } from '../theme/ThemeContext';
 import { useUnreadCount } from '../hooks/useUnreadCount';
 import HomeStackNavigator from './HomeStackNavigator';
 import ChatsStackNavigator from './ChatsStackNavigator';
@@ -19,11 +21,11 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TAB_ICONS: Partial<Record<keyof MainTabParamList, string>> = {
-  HomeStack: '🏠',
-  AIPlanner: '✨',
-  Chats: '💬',
-  Profile: '👤',
+const TAB_ICONS: Partial<Record<keyof MainTabParamList, LucideIcon>> = {
+  HomeStack: House,
+  AIPlanner: Sparkles,
+  Chats: MessageCircle,
+  Profile: User,
 };
 
 const TAB_LABELS: Partial<Record<keyof MainTabParamList, string>> = {
@@ -34,6 +36,7 @@ const TAB_LABELS: Partial<Record<keyof MainTabParamList, string>> = {
 };
 
 export default function MainTabNavigator() {
+  const { colors } = useTheme();
   const unreadCount = useUnreadCount();
 
   return (
@@ -45,31 +48,35 @@ export default function MainTabNavigator() {
             return (
               <View style={{
                 width: 48, height: 48, borderRadius: 24,
-                backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: colors.btn, alignItems: 'center', justifyContent: 'center',
                 marginBottom: 12,
               }}>
-                <Text style={{ fontSize: 26, color: '#000', lineHeight: 30 }}>+</Text>
+                <Plus size={26} color={colors.btnText} strokeWidth={2.5} />
               </View>
             );
           }
+          const Icon = TAB_ICONS[route.name];
+          if (!Icon) return null;
           return (
-            <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.4 }}>
-              {TAB_ICONS[route.name]}
-            </Text>
+            <Icon
+              size={22}
+              color={focused ? colors.text : colors.textFaint}
+              strokeWidth={focused ? 2.4 : 2}
+            />
           );
         },
         tabBarLabel: ({ focused }) => {
           if (route.name === 'AddItem') return null;
           return (
-            <Text style={{ fontSize: 10, color: focused ? '#fff' : '#666' }}>
+            <Text style={{ fontSize: 10, color: focused ? colors.text : colors.textFaint }}>
               {TAB_LABELS[route.name]}
             </Text>
           );
         },
         tabBarStyle: {
           height: 72,
-          backgroundColor: '#242424',
-          borderTopColor: '#333',
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingBottom: 8,
         },

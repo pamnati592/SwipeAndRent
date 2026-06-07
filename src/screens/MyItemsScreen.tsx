@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
@@ -7,6 +7,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { ChevronLeft, Package, Calendar, Pencil, Eye, EyeOff } from 'lucide-react-native';
 
 type Booking = {
   id: string;
@@ -32,16 +36,6 @@ type ItemRow = {
   bookings: Booking[];
 };
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷', gaming: '🎮', camping: '⛺',
-  diy: '🔧', music: '🎸', sports: '⚽',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#f0a500', approved: '#4da6ff',
-  active: '#4cd964', completed: '#666', rejected: '#888',
-};
-
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending', approved: 'Approved',
   active: 'Active', completed: 'Done', rejected: 'Declined',
@@ -54,6 +48,8 @@ function fmt(iso: string): string {
 }
 
 export default function MyItemsScreen({ navigation }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [items, setItems] = useState<ItemRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -115,21 +111,21 @@ export default function MyItemsScreen({ navigation }: Props) {
   }
 
   if (loading) {
-    return <SafeAreaView style={styles.container}><ActivityIndicator color="#fff" style={{ flex: 1 }} /></SafeAreaView>;
+    return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.text} style={{ flex: 1 }} /></SafeAreaView>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>←</Text>
+          <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Items</Text>
       </View>
 
       {items.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>📦</Text>
+          <Package size={48} color={colors.textFaint} strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>No items yet</Text>
           <Text style={styles.emptySubtext}>Tap + to list your first item</Text>
         </View>
@@ -156,7 +152,9 @@ export default function MyItemsScreen({ navigation }: Props) {
                     photos: item.photos,
                   }})}
                 >
-                  <Text style={styles.emoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+                  <View style={styles.emoji}>
+                    <CategoryIcon category={item.category} size={28} color={colors.textSecondary} />
+                  </View>
                   <View style={styles.cardMeta}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
                     <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
@@ -170,19 +168,24 @@ export default function MyItemsScreen({ navigation }: Props) {
                     style={styles.actionBtn}
                     onPress={() => navigation.navigate('ManageItem', { itemId: item.id, itemTitle: item.title })}
                   >
-                    <Text style={styles.actionBtnText}>📅 Manage</Text>
+                    <Calendar size={14} color={colors.textSecondary} />
+                    <Text style={styles.actionBtnText}>Manage</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={() => navigation.navigate('EditItem', { itemId: item.id })}
                   >
-                    <Text style={styles.actionBtnText}>✏️ Edit</Text>
+                    <Pencil size={14} color={colors.textSecondary} />
+                    <Text style={styles.actionBtnText}>Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionBtn, item.is_hidden && styles.actionBtnActive]}
                     onPress={() => toggleHidden(item)}
                   >
-                    <Text style={styles.actionBtnText}>{item.is_hidden ? '👁 Show' : '🙈 Hide'}</Text>
+                    {item.is_hidden
+                      ? <Eye size={14} color={colors.textSecondary} />
+                      : <EyeOff size={14} color={colors.textSecondary} />}
+                    <Text style={styles.actionBtnText}>{item.is_hidden ? 'Show' : 'Hide'}</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -197,56 +200,57 @@ export default function MyItemsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backText: { color: '#fff', fontSize: 22, fontWeight: '300' },
-  title: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  backText: { color: colors.text, fontSize: 22, fontWeight: '300' },
+  title: { fontSize: 20, fontWeight: '700', color: colors.text },
 
   list: { padding: 16, gap: 12 },
 
   card: {
-    backgroundColor: '#242424', borderRadius: 16,
-    borderWidth: 1, borderColor: '#2a2a2a', padding: 16, gap: 12,
+    backgroundColor: colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12,
   },
   cardHidden: { opacity: 0.5 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  emoji: { fontSize: 32 },
+  emoji: { width: 40, alignItems: 'center', justifyContent: 'center' },
   cardMeta: { flex: 1 },
-  itemTitle: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  itemPrice: { fontSize: 13, color: '#888', marginTop: 2 },
-  cardChevron: { fontSize: 22, color: '#444', fontWeight: '300' },
+  itemTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  itemPrice: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  cardChevron: { fontSize: 22, color: colors.textFaint, fontWeight: '300' },
   availBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
   availText: { fontSize: 12, fontWeight: '600' },
 
   actionRow: { flexDirection: 'row', gap: 8 },
   actionBtn: {
     flex: 1, height: 36,
-    backgroundColor: '#2a2a2a', borderRadius: 8,
-    borderWidth: 1, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderRadius: 8,
+    borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row', gap: 5,
     alignItems: 'center', justifyContent: 'center',
   },
-  actionBtnActive: { borderColor: '#4da6ff', backgroundColor: '#0a1a2a' },
-  actionBtnText: { color: '#aaa', fontSize: 12, fontWeight: '500' },
+  actionBtnActive: { borderColor: colors.primary, backgroundColor: colors.infoBg },
+  actionBtnText: { color: colors.textSecondary, fontSize: 12, fontWeight: '500' },
 
-  bookingsSection: { gap: 8, borderTopWidth: 1, borderTopColor: '#2a2a2a', paddingTop: 12 },
-  bookingsSectionTitle: { fontSize: 11, color: '#555', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  bookingsSection: { gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
+  bookingsSectionTitle: { fontSize: 11, color: colors.textFaint, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  bookingDates: { fontSize: 13, color: '#ccc', flex: 1 },
-  bookingRenter: { fontSize: 13, color: '#888', maxWidth: 80 },
+  bookingDates: { fontSize: 13, color: colors.textSecondary, flex: 1 },
+  bookingRenter: { fontSize: 13, color: colors.textMuted, maxWidth: 80 },
   bookingRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   bookingStatus: { fontSize: 12, fontWeight: '600' },
-  bookingChevron: { fontSize: 16, color: '#555', fontWeight: '300' },
+  bookingChevron: { fontSize: 16, color: colors.textFaint, fontWeight: '300' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 60 },
   emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
-  emptySubtext: { fontSize: 14, color: '#666' },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
+  emptySubtext: { fontSize: 14, color: colors.textFaint },
 
 });

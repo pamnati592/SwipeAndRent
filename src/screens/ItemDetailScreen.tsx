@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, Image, FlatList, TouchableOpacity,
   ScrollView, Dimensions, StatusBar, Alert, ActivityIndicator, Modal,
@@ -8,18 +8,13 @@ import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import { supabase } from '../services/supabase';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X } from 'lucide-react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷',
-  gaming: '🎮',
-  camping: '⛺',
-  diy: '🔧',
-  music: '🎸',
-  sports: '⚽',
-};
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'ItemDetail'>;
 
@@ -44,25 +39,26 @@ function buildMarkedDates(
   start: string | null,
   end: string | null,
   blocked: Set<string>,
+  colors: ThemeColors,
 ): Record<string, any> {
   const marks: Record<string, any> = {};
 
   blocked.forEach(d => {
-    marks[d] = { disabled: true, disableTouchEvent: true, color: '#2a2a2a', textColor: '#555' };
+    marks[d] = { disabled: true, disableTouchEvent: true, color: colors.border, textColor: colors.textFaint };
   });
 
   if (!start) return marks;
 
   if (!end) {
-    marks[start] = { startingDay: true, endingDay: true, color: '#fff', textColor: '#000' };
+    marks[start] = { startingDay: true, endingDay: true, color: colors.text, textColor: colors.btnText };
     return marks;
   }
 
   const range = datesBetween(start, end);
   range.forEach((d, i) => {
     marks[d] = {
-      color: '#fff',
-      textColor: '#000',
+      color: colors.text,
+      textColor: colors.btnText,
       startingDay: i === 0,
       endingDay: i === range.length - 1,
     };
@@ -72,6 +68,8 @@ function buildMarkedDates(
 }
 
 export default function ItemDetailScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { item, openRent, prefilledStart, prefilledEnd } = route.params;
   const insets = useSafeAreaInsets();
   const photos = item.photos?.filter(Boolean) ?? [];
@@ -272,7 +270,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     }
   }
 
-  const markedDates = buildMarkedDates(selectedStart, selectedEnd, blockedDates);
+  const markedDates = buildMarkedDates(selectedStart, selectedEnd, blockedDates, colors);
   const totalDays = selectedStart && selectedEnd ? daysBetween(selectedStart, selectedEnd) : null;
   const totalPrice = totalDays ? totalDays * item.daily_price : null;
 
@@ -285,7 +283,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           style={styles.backButton}
           onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('HomeMain')}
         >
-          <Text style={styles.backText}>← Back</Text>
+          <ChevronLeft size={20} color={colors.text} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
 
         <ScrollView showsVerticalScrollIndicator={false}>
@@ -321,7 +320,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               </>
             ) : (
               <View style={styles.emojiPlaceholder}>
-                <Text style={styles.emojiText}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
+                <CategoryIcon category={item.category} size={84} color={colors.textMuted} strokeWidth={1.5} />
               </View>
             )}
           </View>
@@ -349,7 +348,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                   <Text style={styles.ownerLabel}>Listed by</Text>
                   <Text style={styles.ownerName}>{ownerName}{ownerCity ? ` · ${ownerCity}` : ''}</Text>
                 </View>
-                <Text style={styles.ownerChevron}>›</Text>
+                <ChevronRight size={18} color={colors.textFaint} />
               </TouchableOpacity>
             )}
 
@@ -365,8 +364,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 <Text style={styles.tagText}>{item.category}</Text>
               </View>
               {item.city && (
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>📍 {item.city}</Text>
+                <View style={[styles.tag, styles.tagWithIcon]}>
+                  <MapPin size={13} color={colors.textSecondary} />
+                  <Text style={styles.tagText}>{item.city}</Text>
                 </View>
               )}
             </View>
@@ -381,12 +381,14 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             {/* Action buttons */}
             <View style={styles.actions}>
               <TouchableOpacity style={styles.actionBtn} onPress={openRentModal}>
-                <Text style={styles.actionBtnText}>🏷️ Rent</Text>
+                <Tag size={18} color={colors.btnText} />
+                <Text style={styles.actionBtnText}>Rent</Text>
               </TouchableOpacity>
 
               {item.sale_price != null && (
                 <TouchableOpacity style={styles.actionBtn}>
-                  <Text style={styles.actionBtnText}>🛒 Buy</Text>
+                  <ShoppingCart size={18} color={colors.btnText} />
+                  <Text style={styles.actionBtnText}>Buy</Text>
                 </TouchableOpacity>
               )}
 
@@ -395,8 +397,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 onPress={toggleWishlist}
                 disabled={wishlistLoading}
               >
+                <Heart size={18} color={wishlisted ? colors.danger : colors.text} fill={wishlisted ? colors.danger : 'transparent'} />
                 <Text style={styles.actionBtnTextSecondary}>
-                  {wishlisted ? '❤️ Saved' : '🤍 Wishlist'}
+                  {wishlisted ? 'Saved' : 'Wishlist'}
                 </Text>
               </TouchableOpacity>
 
@@ -406,8 +409,11 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 disabled={chatLoading}
               >
                 {chatLoading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.actionBtnTextSecondary}>💬 Chat</Text>
+                  ? <ActivityIndicator color={colors.text} size="small" />
+                  : <>
+                      <MessageCircle size={18} color={colors.text} />
+                      <Text style={styles.actionBtnTextSecondary}>Chat</Text>
+                    </>
                 }
               </TouchableOpacity>
             </View>
@@ -425,7 +431,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Choose rental dates</Text>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setRentModalVisible(false)}>
-              <Text style={styles.modalClose}>✕</Text>
+              <X size={22} color={colors.text} />
             </TouchableOpacity>
           </View>
 
@@ -444,15 +450,15 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             onDayPress={onDayPress}
             minDate={TODAY}
             theme={{
-              backgroundColor: '#1a1a1a',
-              calendarBackground: '#1a1a1a',
-              textSectionTitleColor: '#666',
-              dayTextColor: '#fff',
-              todayTextColor: '#4da6ff',
+              backgroundColor: colors.bg,
+              calendarBackground: colors.bg,
+              textSectionTitleColor: colors.textFaint,
+              dayTextColor: colors.text,
+              todayTextColor: colors.primary,
               todayBackgroundColor: 'transparent',
-              arrowColor: '#fff',
-              monthTextColor: '#fff',
-              textDisabledColor: '#444',
+              arrowColor: colors.text,
+              monthTextColor: colors.text,
+              textDisabledColor: colors.textFaint,
             }}
           />
 
@@ -474,7 +480,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             disabled={!selectedStart || !selectedEnd || rentLoading}
           >
             {rentLoading
-              ? <ActivityIndicator color="#000" />
+              ? <ActivityIndicator color={colors.btnText} />
               : <Text style={styles.sendBtnText}>Send Request</Text>
             }
           </TouchableOpacity>
@@ -488,97 +494,98 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
-  backButton: { paddingHorizontal: 20, paddingVertical: 12 },
-  backText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingVertical: 12 },
+  backText: { color: colors.text, fontSize: 15, fontWeight: '500' },
 
-  galleryContainer: { width: SCREEN_WIDTH, backgroundColor: '#242424' },
+  galleryContainer: { width: SCREEN_WIDTH, backgroundColor: colors.surface },
   photo: { width: SCREEN_WIDTH, height: 320 },
   emojiPlaceholder: {
     width: SCREEN_WIDTH, height: 320,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#333',
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.chip,
   },
   emojiText: { fontSize: 80 },
   dotRow: {
     flexDirection: 'row', justifyContent: 'center', gap: 6,
-    paddingVertical: 10, backgroundColor: '#1a1a1a',
+    paddingVertical: 10, backgroundColor: colors.bg,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#444' },
-  dotActive: { backgroundColor: '#fff' },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.cardAlt },
+  dotActive: { backgroundColor: colors.btn },
 
   details: { padding: 24, gap: 12 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  title: { fontSize: 24, fontWeight: 'bold', color: colors.text },
   metaRow: { flexDirection: 'row', alignItems: 'baseline', gap: 16 },
-  price: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-  salePrice: { fontSize: 14, color: '#888' },
+  price: { fontSize: 22, fontWeight: 'bold', color: colors.text },
+  salePrice: { fontSize: 14, color: colors.textMuted },
 
   tagRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   tag: {
     paddingHorizontal: 12, paddingVertical: 6,
-    backgroundColor: '#2a2a2a', borderRadius: 20,
-    borderWidth: 1, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderRadius: 20,
+    borderWidth: 1, borderColor: colors.border,
   },
-  tagText: { color: '#aaa', fontSize: 13 },
+  tagWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  tagText: { color: colors.textSecondary, fontSize: 13 },
 
   ownerRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 12, paddingHorizontal: 14,
-    backgroundColor: '#242424', borderRadius: 12,
+    backgroundColor: colors.surface, borderRadius: 12,
   },
   ownerAvatar: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#3a3a3a', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
   },
-  ownerInitial: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  ownerInitial: { color: colors.text, fontSize: 16, fontWeight: '700' },
   ownerInfo: { flex: 1 },
-  ownerLabel: { color: '#666', fontSize: 11 },
-  ownerName: { color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 1 },
-  ownerChevron: { color: '#666', fontSize: 22, lineHeight: 24 },
+  ownerLabel: { color: colors.textFaint, fontSize: 11 },
+  ownerName: { color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 1 },
+  ownerChevron: { color: colors.textFaint, fontSize: 22, lineHeight: 24 },
 
-  sectionLabel: { fontSize: 13, color: '#666', marginTop: 8 },
-  description: { fontSize: 15, color: '#ccc', lineHeight: 22 },
+  sectionLabel: { fontSize: 13, color: colors.textFaint, marginTop: 8 },
+  description: { fontSize: 15, color: colors.textSecondary, lineHeight: 22 },
 
   actions: { gap: 10, marginTop: 16 },
   actionBtn: {
-    height: 54, backgroundColor: '#fff',
-    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    height: 54, backgroundColor: colors.btn,
+    borderRadius: 12, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
   },
-  actionBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  actionBtnText: { color: colors.btnText, fontSize: 16, fontWeight: '700' },
   actionBtnSecondary: {
     backgroundColor: 'transparent',
-    borderWidth: 1, borderColor: '#3a3a3a',
+    borderWidth: 1, borderColor: colors.border,
   },
-  actionBtnTextSecondary: { color: '#fff', fontSize: 16, fontWeight: '500' },
+  actionBtnTextSecondary: { color: colors.text, fontSize: 16, fontWeight: '500' },
   actionBtnDisabled: { opacity: 0.5 },
-  actionBtnWishlisted: { borderColor: '#e57373', backgroundColor: '#2a1a1a' },
+  actionBtnWishlisted: { borderColor: colors.dangerSoft, backgroundColor: colors.dangerBg },
 
   // Modal
-  modalContainer: { flex: 1, backgroundColor: '#1a1a1a' },
+  modalContainer: { flex: 1, backgroundColor: colors.bg },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
   modalCloseBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  modalClose: { color: '#aaa', fontSize: 20 },
-  modalHint: { color: '#888', fontSize: 13, textAlign: 'center', marginVertical: 12 },
+  modalClose: { color: colors.textSecondary, fontSize: 20 },
+  modalHint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginVertical: 12 },
 
   summaryBox: {
     marginHorizontal: 20, marginTop: 20,
-    padding: 16, backgroundColor: '#2a2a2a', borderRadius: 12,
+    padding: 16, backgroundColor: colors.card, borderRadius: 12,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  summaryText: { color: '#aaa', fontSize: 14 },
-  summaryTotal: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  summaryText: { color: colors.textSecondary, fontSize: 14 },
+  summaryTotal: { color: colors.text, fontSize: 16, fontWeight: '700' },
 
   sendBtn: {
-    margin: 20, height: 54, backgroundColor: '#fff',
+    margin: 20, height: 54, backgroundColor: colors.btn,
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
-  sendBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  sendBtnText: { color: colors.btnText, fontSize: 16, fontWeight: '700' },
   cancelBtn: { marginHorizontal: 20, marginBottom: 8, height: 48, alignItems: 'center', justifyContent: 'center' },
-  cancelBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+  cancelBtnText: { color: colors.text, fontSize: 15, fontWeight: '500' },
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, Alert, Switch, KeyboardAvoidingView,
@@ -10,6 +10,9 @@ import { supabase } from '../services/supabase';
 import CityPicker, { type CityValue } from '../components/CityPicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { X } from 'lucide-react-native';
 
 const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'other'];
 const MAX_ITEM_PHOTOS = 6;
@@ -21,6 +24,8 @@ type PhotoEntry = ExistingPhoto | NewPhoto;
 type Props = NativeStackScreenProps<ProfileStackParamList, 'EditItem'>;
 
 export default function EditItemScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { itemId } = route.params;
 
   const [loadingItem, setLoadingItem] = useState(true);
@@ -203,7 +208,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
   }
 
   if (loadingItem) {
-    return <SafeAreaView style={styles.container}><ActivityIndicator color="#fff" style={{ flex: 1 }} /></SafeAreaView>;
+    return <SafeAreaView style={styles.container}><ActivityIndicator color={colors.text} style={{ flex: 1 }} /></SafeAreaView>;
   }
 
   return (
@@ -219,7 +224,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
           </View>
 
           <Text style={styles.label}>Title *</Text>
-          <TextInput style={styles.input} placeholderTextColor="#555" value={title} onChangeText={setTitle} />
+          <TextInput style={styles.input} placeholderTextColor={colors.textFaint} value={title} onChangeText={setTitle} />
 
           <Text style={styles.label}>Category *</Text>
           <View style={styles.categoryRow}>
@@ -237,14 +242,14 @@ export default function EditItemScreen({ navigation, route }: Props) {
           <Text style={styles.label}>Description *</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholderTextColor="#555"
+            placeholderTextColor={colors.textFaint}
             value={description}
             onChangeText={setDescription}
             multiline numberOfLines={4}
           />
 
           <Text style={styles.label}>Daily Price (NIS) *</Text>
-          <TextInput style={styles.input} placeholderTextColor="#555" value={dailyPrice} onChangeText={setDailyPrice} keyboardType="decimal-pad" />
+          <TextInput style={styles.input} placeholderTextColor={colors.textFaint} value={dailyPrice} onChangeText={setDailyPrice} keyboardType="decimal-pad" />
 
           <Text style={styles.label}>City *</Text>
           <CityPicker
@@ -256,13 +261,13 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
           <View style={styles.toggleRow}>
             <Text style={styles.label}>Also available for sale</Text>
-            <Switch value={forSale} onValueChange={setForSale} trackColor={{ false: '#3a3a3a', true: '#fff' }} thumbColor={forSale ? '#1a1a1a' : '#666'} />
+            <Switch value={forSale} onValueChange={setForSale} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={colors.white} />
           </View>
 
           {forSale && (
             <>
               <Text style={styles.label}>Sale Price (NIS)</Text>
-              <TextInput style={styles.input} placeholderTextColor="#555" value={salePrice} onChangeText={setSalePrice} keyboardType="decimal-pad" />
+              <TextInput style={styles.input} placeholderTextColor={colors.textFaint} value={salePrice} onChangeText={setSalePrice} keyboardType="decimal-pad" />
             </>
           )}
 
@@ -286,7 +291,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
                   <View key={uri + index} style={styles.thumbContainer}>
                     <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
                     <TouchableOpacity style={styles.thumbRemove} onPress={() => setPhotos(prev => prev.filter((_, i) => i !== index))}>
-                      <Text style={styles.thumbRemoveText}>✕</Text>
+                      <X size={14} color={colors.white} strokeWidth={2.5} />
                     </TouchableOpacity>
                     {index === 0 && (
                       <View style={styles.thumbMainBadge}>
@@ -305,7 +310,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
             disabled={saving || deleting}
           >
             {saving
-              ? <ActivityIndicator color="#000" />
+              ? <ActivityIndicator color={colors.btnText} />
               : <Text style={styles.saveBtnText}>Save Changes</Text>
             }
           </TouchableOpacity>
@@ -316,7 +321,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
             disabled={saving || deleting}
           >
             {deleting
-              ? <ActivityIndicator color="#e57373" />
+              ? <ActivityIndicator color={colors.dangerSoft} />
               : <Text style={styles.deleteBtnText}>Delete Item</Text>
             }
           </TouchableOpacity>
@@ -327,48 +332,48 @@ export default function EditItemScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 24, gap: 8, paddingBottom: 48 },
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   backBtn: { width: 32 },
-  backArrow: { fontSize: 28, color: '#fff', fontWeight: '300', lineHeight: 32 },
-  heading: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+  backArrow: { fontSize: 28, color: colors.text, fontWeight: '300', lineHeight: 32 },
+  heading: { fontSize: 22, fontWeight: 'bold', color: colors.text },
 
-  label: { fontSize: 13, color: '#888', marginTop: 12, marginBottom: 4 },
-  sectionHeading: { fontSize: 15, fontWeight: '600', color: '#fff', marginTop: 24, marginBottom: 2 },
-  sectionHint: { fontSize: 12, color: '#555', marginBottom: 8 },
+  label: { fontSize: 13, color: colors.textMuted, marginTop: 12, marginBottom: 4 },
+  sectionHeading: { fontSize: 15, fontWeight: '600', color: colors.text, marginTop: 24, marginBottom: 2 },
+  sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 8 },
 
   input: {
-    backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12,
-    color: '#fff', fontSize: 15,
+    color: colors.text, fontSize: 15,
   },
   textArea: { height: 100, textAlignVertical: 'top' },
 
   categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  categoryChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#3a3a3a', backgroundColor: '#2a2a2a' },
-  categoryChipActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  categoryChipText: { color: '#888', fontSize: 13 },
-  categoryChipTextActive: { color: '#000', fontWeight: '600' },
+  categoryChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  categoryChipActive: { backgroundColor: colors.btn, borderColor: colors.btn },
+  categoryChipText: { color: colors.textMuted, fontSize: 13 },
+  categoryChipTextActive: { color: colors.btnText, fontWeight: '600' },
 
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
 
   photoButtonRow: { flexDirection: 'row', gap: 10 },
-  photoBtn: { flex: 1, height: 44, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#3a3a3a', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  photoBtnText: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  photoBtn: { flex: 1, height: 44, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  photoBtnText: { color: colors.text, fontSize: 14, fontWeight: '500' },
   thumbScroll: { marginTop: 12 },
   thumbContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' },
   thumb: { width: 80, height: 80 },
-  thumbRemove: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
-  thumbRemoveText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  thumbRemove: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.overlayStrong, alignItems: 'center', justifyContent: 'center' },
+  thumbRemoveText: { color: colors.text, fontSize: 10, fontWeight: '700' },
   thumbMainBadge: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center' },
-  thumbMainBadgeText: { fontSize: 10, fontWeight: '700', color: '#000' },
+  thumbMainBadgeText: { fontSize: 10, fontWeight: '700', color: colors.btnText },
 
-  saveBtn: { marginTop: 32, height: 52, backgroundColor: '#fff', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  saveBtnText: { color: '#000', fontSize: 16, fontWeight: '700' },
-  deleteBtn: { marginTop: 12, height: 48, borderRadius: 10, borderWidth: 1, borderColor: '#c0392b', alignItems: 'center', justifyContent: 'center' },
-  deleteBtnText: { color: '#e57373', fontSize: 15, fontWeight: '600' },
+  saveBtn: { marginTop: 32, height: 52, backgroundColor: colors.btn, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  saveBtnText: { color: colors.btnText, fontSize: 16, fontWeight: '700' },
+  deleteBtn: { marginTop: 12, height: 48, borderRadius: 10, borderWidth: 1, borderColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
+  deleteBtnText: { color: colors.dangerSoft, fontSize: 15, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
 });

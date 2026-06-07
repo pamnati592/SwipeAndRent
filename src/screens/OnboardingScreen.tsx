@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, ScrollView, ActivityIndicator, Alert,
@@ -6,31 +6,40 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
 import CityPicker, { type CityValue } from '../components/CityPicker';
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import {
+  ShoppingCart, Package, Repeat, ChevronLeft,
+  Camera, Tent, Wrench, Gamepad2, Music, Bike, Utensils, Palette, Sailboat, Snowflake, Film, Mountain,
+  type LucideIcon,
+} from 'lucide-react-native';
 
-const ROLES = [
-  { value: 'renter', label: 'Renter', description: 'I want to rent items from others', emoji: '🛒' },
-  { value: 'lender', label: 'Lender', description: 'I want to lend my items out', emoji: '📦' },
-  { value: 'both', label: 'Both', description: 'I want to rent and lend', emoji: '🔄' },
-] as const;
+const ROLES: { value: Role; label: string; description: string; icon: LucideIcon }[] = [
+  { value: 'renter', label: 'Renter', description: 'I want to rent items from others', icon: ShoppingCart },
+  { value: 'lender', label: 'Lender', description: 'I want to lend my items out', icon: Package },
+  { value: 'both', label: 'Both', description: 'I want to rent and lend', icon: Repeat },
+];
 
-const INTERESTS = [
-  { value: 'photography', label: 'Photography', emoji: '📷' },
-  { value: 'camping', label: 'Camping', emoji: '⛺' },
-  { value: 'diy', label: 'DIY & Tools', emoji: '🔧' },
-  { value: 'gaming', label: 'Gaming', emoji: '🎮' },
-  { value: 'music', label: 'Music', emoji: '🎵' },
-  { value: 'sports', label: 'Sports', emoji: '🚲' },
-  { value: 'cooking', label: 'Cooking', emoji: '🍳' },
-  { value: 'art', label: 'Art & Craft', emoji: '🎨' },
-  { value: 'water_sports', label: 'Water Sports', emoji: '🌊' },
-  { value: 'winter_sports', label: 'Winter Sports', emoji: '❄️' },
-  { value: 'film', label: 'Film & Video', emoji: '🎬' },
-  { value: 'outdoor', label: 'Outdoor', emoji: '🏕️' },
+const INTERESTS: { value: string; label: string; icon: LucideIcon }[] = [
+  { value: 'photography', label: 'Photography', icon: Camera },
+  { value: 'camping', label: 'Camping', icon: Tent },
+  { value: 'diy', label: 'DIY & Tools', icon: Wrench },
+  { value: 'gaming', label: 'Gaming', icon: Gamepad2 },
+  { value: 'music', label: 'Music', icon: Music },
+  { value: 'sports', label: 'Sports', icon: Bike },
+  { value: 'cooking', label: 'Cooking', icon: Utensils },
+  { value: 'art', label: 'Art & Craft', icon: Palette },
+  { value: 'water_sports', label: 'Water Sports', icon: Sailboat },
+  { value: 'winter_sports', label: 'Winter Sports', icon: Snowflake },
+  { value: 'film', label: 'Film & Video', icon: Film },
+  { value: 'outdoor', label: 'Outdoor', icon: Mountain },
 ];
 
 type Role = 'renter' | 'lender' | 'both';
 
 export default function OnboardingScreen({ onFinished }: { onFinished: () => void }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<Role | null>(null);
   const [fullName, setFullName] = useState('');
@@ -92,13 +101,17 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             <Text style={styles.title}>How will you use SwipeAndRent?</Text>
             <Text style={styles.subtitle}>You can change this later in your profile</Text>
 
-            {ROLES.map((r) => (
+            {ROLES.map((r) => {
+              const RoleIcon = r.icon;
+              return (
               <TouchableOpacity
                 key={r.value}
                 style={[styles.roleCard, role === r.value && styles.roleCardSelected]}
                 onPress={() => setRole(r.value)}
               >
-                <Text style={styles.roleEmoji}>{r.emoji}</Text>
+                <View style={styles.roleEmoji}>
+                  <RoleIcon size={26} color={role === r.value ? colors.primary : colors.textSecondary} />
+                </View>
                 <View style={styles.roleText}>
                   <Text style={[styles.roleLabel, role === r.value && styles.roleLabelSelected]}>
                     {r.label}
@@ -109,7 +122,8 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
                   {role === r.value && <View style={styles.radioInner} />}
                 </View>
               </TouchableOpacity>
-            ))}
+            );
+            })}
 
             <TouchableOpacity
               style={[styles.nextButton, !role && styles.nextButtonDisabled]}
@@ -131,7 +145,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             <TextInput
               style={styles.input}
               placeholder="Your full name"
-              placeholderTextColor="#555"
+              placeholderTextColor={colors.textFaint}
               value={fullName}
               onChangeText={setFullName}
               autoFocus
@@ -153,7 +167,8 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => setStep(1)}>
-              <Text style={styles.backButtonText}>← Back</Text>
+              <ChevronLeft size={16} color={colors.textFaint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           </>
         )}
@@ -169,13 +184,14 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             <View style={styles.interestsGrid}>
               {INTERESTS.map((item) => {
                 const selected = interests.includes(item.value);
+                const InterestIcon = item.icon;
                 return (
                   <TouchableOpacity
                     key={item.value}
                     style={[styles.interestChip, selected && styles.interestChipSelected]}
                     onPress={() => toggleInterest(item.value)}
                   >
-                    <Text style={styles.interestEmoji}>{item.emoji}</Text>
+                    <InterestIcon size={15} color={selected ? colors.primary : colors.textSecondary} />
                     <Text style={[styles.interestLabel, selected && styles.interestLabelSelected]}>
                       {item.label}
                     </Text>
@@ -194,13 +210,14 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
               disabled={interests.length < 3 || loading}
             >
               {loading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={colors.btnText} />
                 : <Text style={styles.nextButtonText}>Let's go!</Text>
               }
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => setStep(2)}>
-              <Text style={styles.backButtonText}>← Back</Text>
+              <ChevronLeft size={16} color={colors.textFaint} />
+              <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           </>
         )}
@@ -209,54 +226,54 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   progressBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 24, paddingTop: 16 },
-  progressSegment: { flex: 1, height: 4, backgroundColor: '#2a2a2a', borderRadius: 2 },
-  progressSegmentActive: { backgroundColor: '#fff' },
+  progressSegment: { flex: 1, height: 4, backgroundColor: colors.card, borderRadius: 2 },
+  progressSegmentActive: { backgroundColor: colors.btn },
   content: { padding: 24, paddingBottom: 48, gap: 12 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginTop: 16, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#888', marginBottom: 16 },
-  label: { fontSize: 13, color: '#888', marginBottom: 6, marginTop: 4 },
+  title: { fontSize: 22, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 4 },
+  subtitle: { fontSize: 14, color: colors.textMuted, marginBottom: 16 },
+  label: { fontSize: 13, color: colors.textMuted, marginBottom: 6, marginTop: 4 },
   input: {
-    height: 48, backgroundColor: '#2a2a2a', borderWidth: 2,
-    borderColor: '#3a3a3a', borderRadius: 8, paddingHorizontal: 16, color: '#fff', fontSize: 15,
+    height: 48, backgroundColor: colors.card, borderWidth: 2,
+    borderColor: colors.border, borderRadius: 8, paddingHorizontal: 16, color: colors.text, fontSize: 15,
   },
   roleCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#2a2a2a', borderWidth: 2, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderWidth: 2, borderColor: colors.border,
     borderRadius: 12, padding: 16,
   },
-  roleCardSelected: { borderColor: '#fff', backgroundColor: '#2f2f2f' },
-  roleEmoji: { fontSize: 28 },
+  roleCardSelected: { borderColor: colors.btn, backgroundColor: colors.cardAlt },
+  roleEmoji: { width: 40, alignItems: 'center', justifyContent: 'center' },
   roleText: { flex: 1 },
-  roleLabel: { fontSize: 16, fontWeight: '600', color: '#aaa' },
-  roleLabelSelected: { color: '#fff' },
-  roleDescription: { fontSize: 13, color: '#666', marginTop: 2 },
+  roleLabel: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
+  roleLabelSelected: { color: colors.text },
+  roleDescription: { fontSize: 13, color: colors.textFaint, marginTop: 2 },
   radioOuter: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: '#555',
+    borderWidth: 2, borderColor: colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
-  radioOuterSelected: { borderColor: '#fff' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
+  radioOuterSelected: { borderColor: colors.btn },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.btn },
   interestsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   interestChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#2a2a2a', borderWidth: 2, borderColor: '#3a3a3a',
+    backgroundColor: colors.card, borderWidth: 2, borderColor: colors.border,
     borderRadius: 24, paddingHorizontal: 14, paddingVertical: 10,
   },
-  interestChipSelected: { borderColor: '#fff', backgroundColor: '#2f2f2f' },
+  interestChipSelected: { borderColor: colors.btn, backgroundColor: colors.cardAlt },
   interestEmoji: { fontSize: 16 },
-  interestLabel: { fontSize: 13, color: '#888' },
-  interestLabelSelected: { color: '#fff' },
-  selectionCount: { fontSize: 13, color: '#666', textAlign: 'center' },
+  interestLabel: { fontSize: 13, color: colors.textMuted },
+  interestLabelSelected: { color: colors.text },
+  selectionCount: { fontSize: 13, color: colors.textFaint, textAlign: 'center' },
   nextButton: {
-    height: 52, backgroundColor: '#fff', borderRadius: 10,
+    height: 52, backgroundColor: colors.btn, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center', marginTop: 8,
   },
-  nextButtonDisabled: { backgroundColor: '#2a2a2a' },
-  nextButtonText: { fontSize: 16, fontWeight: '600', color: '#000' },
-  backButton: { alignItems: 'center', paddingVertical: 8 },
-  backButtonText: { color: '#666', fontSize: 14 },
+  nextButtonDisabled: { backgroundColor: colors.card },
+  nextButtonText: { fontSize: 16, fontWeight: '600', color: colors.btnText },
+  backButton: { flexDirection: 'row', gap: 4, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+  backButtonText: { color: colors.textFaint, fontSize: 14 },
 });

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 import LoginScreen from '../screens/LoginScreen';
 import PhoneVerificationScreen from '../screens/PhoneVerificationScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -20,6 +22,7 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
+  const { colors, isDark } = useTheme();
   const [session, setSession] = useState<any>(undefined);
   const [phoneVerified, setPhoneVerified] = useState<boolean>(false);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean>(false);
@@ -43,18 +46,32 @@ export default function RootNavigator() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  const navTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDark ? DarkTheme : DefaultTheme).colors,
+      background: colors.bg,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.primary,
+    },
+  };
+
   // still loading — don't flash Login before checking session
   if (session === undefined) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color="#fff" />
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ActivityIndicator color={colors.text} />
       </View>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer key={session?.user?.id ?? 'logged-out'}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <NavigationContainer theme={navTheme} key={session?.user?.id ?? 'logged-out'}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!session ? (
             <Stack.Screen name="Login" component={LoginScreen} />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Image, ActivityIndicator,
@@ -8,15 +8,16 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import type { Item } from '../types/item';
 import { supabase } from '../services/supabase';
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  photography: '📷', gaming: '🎮', camping: '⛺',
-  diy: '🔧', music: '🎸', sports: '⚽',
-};
+import { useTheme } from '../theme/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 
 export default function PublicProfileScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { userId, userName } = route.params;
   const [items, setItems]           = useState<Item[]>([]);
   const [city, setCity]             = useState<string | null>(null);
@@ -56,7 +57,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
 
   function renderItem({ item }: { item: Item }) {
     const cover = item.photos?.find(Boolean);
-    const emoji = CATEGORY_EMOJI[item.category] ?? '📦';
     return (
       <TouchableOpacity
         style={styles.itemCard}
@@ -65,14 +65,19 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
       >
         {cover
           ? <Image source={{ uri: cover }} style={styles.itemThumb} resizeMode="cover" />
-          : <View style={styles.itemThumbEmoji}><Text style={styles.itemEmoji}>{emoji}</Text></View>
+          : <View style={styles.itemThumbEmoji}><CategoryIcon category={item.category} size={26} color={colors.textSecondary} /></View>
         }
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
-          {item.city && <Text style={styles.itemCity}>📍 {item.city}</Text>}
+          {item.city && (
+            <View style={styles.itemCityRow}>
+              <MapPin size={12} color={colors.textMuted} />
+              <Text style={styles.itemCity}>{item.city}</Text>
+            </View>
+          )}
         </View>
-        <Text style={styles.itemChevron}>›</Text>
+        <ChevronRight size={20} color={colors.textFaint} />
       </TouchableOpacity>
     );
   }
@@ -88,7 +93,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         ListHeaderComponent={
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backText}>‹</Text>
+              <ChevronLeft size={26} color={colors.text} />
             </TouchableOpacity>
 
             <View style={styles.avatarSection}>
@@ -99,7 +104,12 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
                 }
               </View>
               <Text style={styles.userName}>{userName}</Text>
-              {city ? <Text style={styles.userCity}>📍 {city}</Text> : null}
+              {city ? (
+                <View style={styles.userCityRow}>
+                  <MapPin size={13} color={colors.textMuted} />
+                  <Text style={styles.userCity}>{city}</Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.scoreRow}>
@@ -121,7 +131,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         }
         ListEmptyComponent={
           loading
-            ? <ActivityIndicator color="#fff" style={{ marginTop: 40 }} />
+            ? <ActivityIndicator color={colors.text} style={{ marginTop: 40 }} />
             : <View style={styles.empty}><Text style={styles.emptyText}>No active listings</Text></View>
         }
       />
@@ -129,60 +139,62 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
   listContent: { paddingBottom: 40 },
   header: { paddingBottom: 8 },
 
   backButton: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
-  backText: { fontSize: 32, color: '#fff', fontWeight: '300', lineHeight: 36 },
+  backText: { fontSize: 32, color: colors.text, fontWeight: '300', lineHeight: 36 },
 
   avatarSection: { alignItems: 'center', paddingVertical: 24, gap: 8 },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#3a3a3a', borderWidth: 1, borderColor: '#4a4a4a',
+    backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarInitial: { fontSize: 32, fontWeight: '700', color: '#fff' },
+  avatarInitial: { fontSize: 32, fontWeight: '700', color: colors.text },
   avatarImage: { width: 80, height: 80, borderRadius: 40 },
-  userName: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  userCity: { fontSize: 14, color: '#888' },
+  userName: { fontSize: 22, fontWeight: '700', color: colors.text },
+  userCityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  userCity: { fontSize: 14, color: colors.textMuted },
 
   scoreRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginHorizontal: 40, marginBottom: 28,
-    backgroundColor: '#242424', borderRadius: 16,
-    borderWidth: 1, borderColor: '#2a2a2a',
+    backgroundColor: colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border,
     paddingVertical: 16,
   },
   scoreBadge: { flex: 1, alignItems: 'center', gap: 4 },
-  scoreValue: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  scoreLabel: { fontSize: 12, color: '#666', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
-  scoreDivider: { width: 1, height: 36, backgroundColor: '#2a2a2a' },
+  scoreValue: { fontSize: 22, fontWeight: '700', color: colors.text },
+  scoreLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
+  scoreDivider: { width: 1, height: 36, backgroundColor: colors.card },
 
   sectionTitle: {
-    fontSize: 11, fontWeight: '600', color: '#555',
+    fontSize: 11, fontWeight: '600', color: colors.textFaint,
     letterSpacing: 1, paddingHorizontal: 20, marginBottom: 12,
   },
 
   itemCard: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: '#242424', borderRadius: 14,
-    borderWidth: 1, borderColor: '#2a2a2a', overflow: 'hidden',
+    backgroundColor: colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
   },
   itemThumb: { width: 72, height: 72 },
   itemThumbEmoji: {
-    width: 72, height: 72, backgroundColor: '#2a2a2a',
+    width: 72, height: 72, backgroundColor: colors.card,
     alignItems: 'center', justifyContent: 'center',
   },
   itemEmoji: { fontSize: 28 },
   itemInfo: { flex: 1, paddingHorizontal: 14, gap: 3 },
-  itemTitle: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  itemPrice: { fontSize: 13, color: '#888' },
-  itemCity: { fontSize: 12, color: '#555' },
-  itemChevron: { fontSize: 22, color: '#444', paddingRight: 14, fontWeight: '300' },
+  itemTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
+  itemPrice: { fontSize: 13, color: colors.textMuted },
+  itemCityRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  itemCity: { fontSize: 12, color: colors.textFaint },
+  itemChevron: { fontSize: 22, color: colors.textFaint, paddingRight: 14, fontWeight: '300' },
 
   empty: { alignItems: 'center', paddingTop: 40 },
-  emptyText: { fontSize: 15, color: '#555' },
+  emptyText: { fontSize: 15, color: colors.textFaint },
 });
