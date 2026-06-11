@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -71,7 +72,7 @@ export default function RootNavigator() {
   return (
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <NavigationContainer theme={navTheme} key={session?.user?.id ?? 'logged-out'}>
+      <NavigationContainer ref={navigationRef} theme={navTheme} key={session?.user?.id ?? 'logged-out'}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!session ? (
             <Stack.Screen name="Login" component={LoginScreen} />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, type ListRenderItemInfo,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -11,9 +11,11 @@ import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { useDemoContext } from '../contexts/DemoContext';
+import TapFlash from '../components/TapFlash';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
-  ScanLine, QrCode, CircleCheck, TriangleAlert,
+  ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound,
 } from 'lucide-react-native';
 
 type Message = {
@@ -46,19 +48,23 @@ type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, onlyTransactionId } = route.params;
   const [activeTab, setActiveTab] = useState<'chat' | 'rental'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState(initialText ?? '');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>('Me');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [convInfo, setConvInfo] = useState<ConversationInfo | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
+  const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null; step: 1 | 2 }>({ visible: false, transactionId: null, step: 1 });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const { demoState } = useDemoContext();
+  const demoTap = demoState.demoTapTarget;
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const flatListRef = useRef<FlatList<Message>>(null);
 
@@ -69,6 +75,10 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !mounted) return;
       setCurrentUserId(user.id);
+
+      supabase.from('profiles').select('full_name').eq('id', user.id).single().then(({ data }) => {
+        if (data?.full_name && mounted) setCurrentUserName(data.full_name);
+      });
 
       const [messagesRes, convRes, txRes] = await Promise.all([
         supabase
@@ -334,22 +344,21 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   function handleReportIssue(transactionId: string) {
-    Alert.alert(
-      'Report an issue?',
-      'This puts the rental into dispute and holds the payment in escrow until an admin reviews it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report', style: 'destructive', onPress: async () => {
-            const { error } = await supabase.rpc('report_issue', { p_tx: transactionId });
-            if (error) { Alert.alert('Error', error.message); return; }
-            setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'disputed' } }));
-            const tx = transactions[transactionId];
-            const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-            await insertSystemMessage(`⚠️ An issue was reported${dateRef}. The rental is now in dispute.`, transactionId);
-          },
-        },
-      ],
+    setDisputeModal({ visible: true, transactionId, step: 1 });
+  }
+
+  async function confirmDispute() {
+    const transactionId = disputeModal.transactionId;
+    if (!transactionId) return;
+    setDisputeModal(prev => ({ ...prev, visible: false }));
+    const { error } = await supabase.rpc('report_issue', { p_tx: transactionId });
+    if (error) { Alert.alert('Error', error.message); return; }
+    setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'disputed' } }));
+    const tx = transactions[transactionId];
+    const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
+    await insertSystemMessage(
+      `⚠️ An issue was escalated to UseIT Arbitration${dateRef}. Both parties have agreed to accept the platform's binding decision. Funds are held in escrow pending review.`,
+      transactionId,
     );
   }
 
@@ -422,7 +431,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         tx.status === 'approved' &&
         !(tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000)
       ).length;
-  const filteredMessages = messages.filter(m =>
+  // Demo: when onlyTransactionId is set, the chat shows nothing but that
+  // request — history from previous runs (undeletable under RLS) stays hidden.
+  const visibleMessages = onlyTransactionId
+    ? messages.filter(m => m.transaction_id === onlyTransactionId)
+    : messages;
+  const filteredMessages = visibleMessages.filter(m =>
     activeTab === 'rental' ? !!m.transaction_id : !m.transaction_id
   );
 
@@ -454,26 +468,50 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           {tx && (
             <View style={styles.requestStatus}>
               {tx.status === 'pending' && isLender && (
-                <View style={styles.requestActions}>
+                <>
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
+                      onPress={() => handleApprove(tx.id)}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading
+                        ? <ActivityIndicator color={colors.btnText} size="small" />
+                        : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
+                      }
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
+                      onPress={() => handleReject(tx.id)}
+                      disabled={actionLoading}
+                    >
+                      <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
+                      <Text style={styles.rejectBtnText}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
                   <TouchableOpacity
-                    style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
-                    onPress={() => handleApprove(tx.id)}
-                    disabled={actionLoading}
+                    style={styles.viewProfileBtn}
+                    onPress={() => {
+                      if (!convInfo) return;
+                      (navigation as any).getParent()?.getParent()?.navigate('Home', {
+                        screen: 'PublicProfile',
+                        params: {
+                          userId: convInfo.renter_id,
+                          userName: otherUserName,
+                          approveTransactionId: tx.id,
+                          requestSummary: msg.content,
+                        },
+                      });
+                    }}
                   >
-                    {actionLoading
-                      ? <ActivityIndicator color={colors.btnText} size="small" />
-                      : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
-                    }
+                    <UserRound size={15} color={colors.primary} strokeWidth={2} />
+                    <Text style={styles.viewProfileText}>View {otherUserName}'s profile</Text>
+                    <TapFlash
+                      trigger={demoTap?.target === 'chat-view-profile' ? demoTap.ts : null}
+                      style={{ alignSelf: 'center' }}
+                    />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
-                    onPress={() => handleReject(tx.id)}
-                    disabled={actionLoading}
-                  >
-                    <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
-                    <Text style={styles.rejectBtnText}>Decline</Text>
-                  </TouchableOpacity>
-                </View>
+                </>
               )}
               {tx.status === 'approved' && (
                 <View style={styles.approvedRow}>
@@ -508,6 +546,16 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               {tx.status === 'paid' && (
                 <View style={styles.handoffBlock}>
                   <View style={styles.statusChip}><CreditCard size={15} color={colors.primary} /><Text style={styles.statusActive}>Paid · awaiting pickup</Text></View>
+                  <TouchableOpacity
+                    style={styles.meetingBtn}
+                    onPress={() => navigation.navigate('MeetingPoint', {
+                      renterName: isLender ? otherUserName : currentUserName,
+                      lenderName: isLender ? currentUserName : otherUserName,
+                    })}
+                  >
+                    <MapPin size={16} color={colors.primary} />
+                    <Text style={styles.meetingBtnText}>Set Meeting Point</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.qrActionBtn}
                     onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'pickup', itemTitle })}
@@ -581,13 +629,24 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('ConversationsList')}>
           <ChevronLeft size={26} color={colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
+        <TouchableOpacity
+          style={styles.headerInfo}
+          onPress={() => {
+            if (convInfo) {
+              const otherId = isLender ? convInfo.renter_id : convInfo.lender_id;
+              (navigation as any).getParent()?.getParent()?.navigate('Home', {
+                screen: 'PublicProfile',
+                params: { userId: otherId, userName: otherUserName },
+              });
+            }
+          }}
+        >
           <Text style={styles.headerName} numberOfLines={1}>{otherUserName}</Text>
           <View style={styles.headerItemRow}>
             <Package size={12} color={colors.textMuted} />
             <Text style={styles.headerItem} numberOfLines={1}>{itemTitle}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
         {isLender && convInfo?.item_id && (
           <TouchableOpacity
             style={styles.calendarBtn}
@@ -682,6 +741,83 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      {/* Dispute Modal */}
+      <Modal
+        visible={disputeModal.visible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDisputeModal(prev => ({ ...prev, visible: false }))}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            {disputeModal.step === 1 ? (
+              <>
+                <View style={styles.modalHandle} />
+                <View style={styles.modalIconRow}>
+                  <View style={[styles.modalIconCircle, { backgroundColor: colors.warningBg }]}>
+                    <MessageSquare size={24} color={colors.warning} />
+                  </View>
+                </View>
+                <Text style={styles.modalTitle}>Report Damage</Text>
+                <Text style={styles.modalBody}>
+                  We always recommend resolving issues directly first. Reach out to the other party — most disputes are settled quickly through a simple conversation.
+                </Text>
+                <TouchableOpacity
+                  style={styles.modalPrimaryBtn}
+                  onPress={() => {
+                    setDisputeModal(prev => ({ ...prev, visible: false }));
+                    setActiveTab('chat');
+                  }}
+                >
+                  <MessageSquare size={16} color={colors.btnText} />
+                  <Text style={styles.modalPrimaryBtnText}>Message them directly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalSecondaryBtn}
+                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 2 }))}
+                >
+                  <Text style={styles.modalSecondaryBtnText}>Escalate to UseIT Arbitration →</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setDisputeModal(prev => ({ ...prev, visible: false }))} style={styles.modalCancelLink}>
+                  <Text style={styles.modalCancelLinkText}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.modalHandle} />
+                <View style={styles.modalIconRow}>
+                  <View style={[styles.modalIconCircle, { backgroundColor: colors.dangerBg }]}>
+                    <Scale size={24} color={colors.danger} />
+                  </View>
+                </View>
+                <Text style={styles.modalTitle}>UseIT Arbitration</Text>
+                <View style={styles.arbitrationBox}>
+                  <Text style={styles.arbitrationText}>
+                    "By proceeding, both parties agree to accept UseIT's binding decision regarding this dispute. The platform will review evidence from both sides and issue a final ruling within 48 hours. Payment remains in escrow until resolved."
+                  </Text>
+                </View>
+                <Text style={styles.modalBody}>
+                  This action cannot be undone. The dispute will be assigned to a UseIT mediator immediately.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger }]}
+                  onPress={confirmDispute}
+                >
+                  <Scale size={16} color={colors.white} />
+                  <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>I Agree — Submit Dispute</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalSecondaryBtn}
+                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 1 }))}
+                >
+                  <Text style={styles.modalSecondaryBtnText}>← Go back</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -726,6 +862,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   requestText: { color: colors.text, fontSize: 14, lineHeight: 20 },
   requestStatus: { gap: 8 },
   requestActions: { flexDirection: 'row', gap: 10 },
+  viewProfileBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, marginTop: 2,
+  },
+  viewProfileText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   approveBtn: {
     flex: 1, height: 44, backgroundColor: colors.btn,
     borderRadius: 10, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
@@ -803,6 +944,52 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
 
   emptyTab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
   emptyTabText: { color: colors.textFaint, fontSize: 15 },
+
+  // Meeting Point button
+  meetingBtn: {
+    height: 40, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.primary,
+    flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
+  },
+  meetingBtnText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
+
+  // Dispute Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: colors.overlay,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12,
+    gap: 14,
+  },
+  modalHandle: {
+    alignSelf: 'center', width: 40, height: 4,
+    borderRadius: 2, backgroundColor: colors.border, marginBottom: 6,
+  },
+  modalIconRow: { alignItems: 'center' },
+  modalIconCircle: {
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  modalBody: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  arbitrationBox: {
+    backgroundColor: colors.dangerBg, borderRadius: 12,
+    borderLeftWidth: 3, borderLeftColor: colors.danger,
+    padding: 14,
+  },
+  arbitrationText: { fontSize: 13, color: colors.text, lineHeight: 20, fontStyle: 'italic' },
+  modalPrimaryBtn: {
+    height: 52, backgroundColor: colors.btn, borderRadius: 14,
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+  },
+  modalPrimaryBtnText: { color: colors.btnText, fontSize: 15, fontWeight: '700' },
+  modalSecondaryBtn: { alignItems: 'center', paddingVertical: 8 },
+  modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
+  modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
+  modalCancelLinkText: { color: colors.textFaint, fontSize: 14 },
 
   highlighted: {
     borderColor: colors.primary,

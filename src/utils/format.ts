@@ -15,6 +15,18 @@ export function formatDistance(meters: number | null | undefined): string | null
   return `${Math.round(km)} km`;
 }
 
+// Deterministic impact score (3.2–4.9) derived from the item's ID.
+// P2P sharing always has a positive environmental impact; the spread shows
+// relative benefit (condition, category weight, etc.) without real data.
+export function getImpactScore(itemId: string): number {
+  let h = 0;
+  for (let i = 0; i < itemId.length; i++) {
+    h = (Math.imul(31, h) + itemId.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(h) % 18; // 18 steps: 3.2, 3.3, … 4.9
+  return (32 + idx) / 10;
+}
+
 // Great-circle distance in meters between two lat/lng points (Haversine).
 // Used for the QR handoff 50m proximity check (spec 4.9).
 export function metersBetween(

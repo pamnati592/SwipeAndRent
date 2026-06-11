@@ -46,3 +46,4 @@ src/config/testAccounts.ts
 
 # Supabase CLI local state
 supabase/.temp/
+/SwipeAndRent

@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
-  TextInput, Dimensions, PanResponder, Animated, ActivityIndicator,
+  TextInput, Dimensions, PanResponder, Animated, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,7 +13,9 @@ import { formatDistance } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { MapPin, X, Heart } from 'lucide-react-native';
+import { MapPin, X, Heart, Leaf } from 'lucide-react-native';
+import { getImpactScore } from '../utils/format';
+import { useDemoContext } from '../contexts/DemoContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -49,6 +51,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const position = useRef(new Animated.ValueXY()).current;
 
   const { coords, status: locStatus } = useUserLocation();
@@ -59,18 +62,50 @@ export default function HomeScreen({ navigation }: Props) {
 
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) =>
-      it.title.toLowerCase().includes(q)
-      || (it.description?.toLowerCase().includes(q) ?? false)
-      || it.category.toLowerCase().includes(q)
-    );
-  }, [items, query]);
+    return items.filter((it) => {
+      if (selectedCategory && it.category !== selectedCategory) return false;
+      if (!q) return true;
+      return (
+        it.title.toLowerCase().includes(q)
+        || (it.description?.toLowerCase().includes(q) ?? false)
+        || it.category.toLowerCase().includes(q)
+      );
+    });
+  }, [items, query, selectedCategory]);
 
   useEffect(() => { itemsRef.current = filteredItems; }, [filteredItems]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { navigationRef.current = navigation; }, [navigation]);
-  useEffect(() => { setCurrentIndex(0); }, [query]);
+  useEffect(() => { setCurrentIndex(0); }, [query, selectedCategory]);
+
+  // Demo mode: react to category override signal
+  const { demoState } = useDemoContext();
+  useEffect(() => {
+    if (demoState.categoryOverride !== null) {
+      setSelectedCategory(demoState.categoryOverride);
+    }
+  }, [demoState.categoryOverride]);
+
+  // Demo mode: react to swipe signal — animate card only, DemoContext handles navigation
+  const lastSwipeTs = useRef(0);
+  useEffect(() => {
+    const sig = demoState.demoSwipeSignal;
+    if (!sig || sig.ts === lastSwipeTs.current) return;
+    lastSwipeTs.current = sig.ts;
+    const x = sig.dir === 'right' ? SCREEN_WIDTH : -SCREEN_WIDTH;
+    Animated.timing(position, { toValue: { x, y: 0 }, duration: 280, useNativeDriver: false }).start(() => {
+      // Position resets in the layout effect below, in the SAME frame the new
+      // card commits — resetting here would flash the old card back at center.
+      setCurrentIndex(prev => prev + 1);
+    });
+  }, [demoState.demoSwipeSignal]);
+
+  // Snap the deck back to center in the same frame the promoted card renders,
+  // so neither the old card (at center) nor the new card (off-screen) is ever
+  // painted in a stale position.
+  useLayoutEffect(() => {
+    position.setValue({ x: 0, y: 0 });
+  }, [currentIndex]);
 
   useEffect(() => {
     if (locStatus === 'idle' || locStatus === 'requesting') return;
@@ -101,7 +136,6 @@ export default function HomeScreen({ navigation }: Props) {
   function swipeOut(direction: 'left' | 'right') {
     const x = direction === 'right' ? SCREEN_WIDTH : -SCREEN_WIDTH;
     Animated.timing(position, { toValue: { x, y: 0 }, duration: 250, useNativeDriver: false }).start(() => {
-      position.setValue({ x: 0, y: 0 });
       if (direction === 'right') {
         const len = itemsRef.current.length;
         const item = len > 0 ? itemsRef.current[currentIndexRef.current % len] : null;
@@ -136,26 +170,38 @@ export default function HomeScreen({ navigation }: Props) {
     outputRange: ['-15deg', '0deg', '15deg'],
   });
 
+  // Warm the image cache for the upcoming cards so a freshly mounted back card
+  // never shows a blank frame while its photo loads.
+  useEffect(() => {
+    filteredItems.slice(0, 6).forEach(it => {
+      const photo = it.photos?.filter(Boolean)[0];
+      if (photo) Image.prefetch(photo);
+    });
+  }, [filteredItems]);
+
   const len = filteredItems.length;
   const currentItem = len > 0 ? filteredItems[currentIndex % len] : null;
   const nextItem = len > 1 ? filteredItems[(currentIndex + 1) % len] : undefined;
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by name, description, category..."
-          placeholderTextColor={colors.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          autoCorrect={false}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
+      <View style={styles.header}>
+        <View style={styles.topBar}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name, description, category..."
+            placeholderTextColor={colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
 
-      <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
+        <CategoryBar selected={selectedCategory} onSelect={setSelectedCategory} />
+        <RadiusSlider value={radiusKm} onChange={setRadiusKm} />
+      </View>
 
       {loading ? (
         <View style={styles.feed}>
@@ -172,52 +218,155 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       ) : (
         <View style={styles.feed}>
-          {nextItem && (
-            <View style={[styles.card, styles.backCard]}>
-              <CardImage key={nextItem.id} item={nextItem} />
-            </View>
-          )}
+          {/* Both cards are keyed siblings of the same element type, so when the
+              deck advances the back card's instance BECOMES the top card — the
+              image never remounts, which kills the flicker between swipes. */}
+          {[
+            ...(nextItem ? [{ item: nextItem, isTop: false }] : []),
+            { item: currentItem, isTop: true },
+          ].map(({ item, isTop }) => (
+            <Animated.View
+              key={item.id}
+              style={[
+                styles.card,
+                isTop
+                  ? { transform: [...position.getTranslateTransform(), { rotate }] }
+                  : styles.backCard,
+              ]}
+              {...(isTop ? panResponder.panHandlers : undefined)}
+            >
+              <CardImage item={item} />
 
-          <Animated.View
-            style={[styles.card, { transform: [...position.getTranslateTransform(), { rotate }] }]}
-            {...panResponder.panHandlers}
-          >
-            <CardImage key={currentItem.id} item={currentItem} />
-            {(() => {
-              const distance = formatDistance(currentItem.distance_meters);
-              return distance ? (
-                <View style={styles.distanceBadge} pointerEvents="none">
-                  <MapPin size={11} color={colors.scrimText} />
-                  <Text style={styles.distanceBadgeText}>{distance}</Text>
-                </View>
-              ) : null;
-            })()}
-            <View style={styles.cardContent}>
-              <Text style={styles.itemTitle}>{currentItem.title}</Text>
-              <Text style={styles.itemSubtitle} numberOfLines={2}>{currentItem.description}</Text>
-              <Text style={styles.itemPrice}>₪{currentItem.daily_price}/day</Text>
-              {currentItem.city && (
-                <View style={styles.cityRow}>
-                  <MapPin size={13} color={colors.textMuted} />
-                  <Text style={styles.itemDistance}>{currentItem.city}</Text>
-                </View>
+              {isTop && (
+                <>
+                  {/* Impact badge — top left */}
+                  <View style={styles.impactBadge} pointerEvents="none">
+                    <Leaf size={11} color="#fff" strokeWidth={2.5} />
+                    <Text style={styles.impactBadgeText}>{getImpactScore(item.id).toFixed(1)}</Text>
+                  </View>
+
+                  {/* Distance badge — top right */}
+                  {(() => {
+                    const distance = formatDistance(item.distance_meters);
+                    return distance ? (
+                      <View style={styles.distanceBadge} pointerEvents="none">
+                        <MapPin size={11} color={colors.scrimText} />
+                        <Text style={styles.distanceBadgeText}>{distance}</Text>
+                      </View>
+                    ) : null;
+                  })()}
+                  <View style={styles.cardContent}>
+                    <Text style={styles.itemTitle}>{item.title}</Text>
+                    <Text style={styles.itemSubtitle} numberOfLines={2}>{item.description}</Text>
+                    <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+                    {item.city && (
+                      <View style={styles.cityRow}>
+                        <MapPin size={13} color={colors.textMuted} />
+                        <Text style={styles.itemDistance}>{item.city}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.swipeButtons}>
+                    <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
+                      <X size={24} color={colors.textSecondary} strokeWidth={2.4} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('right')}>
+                      <Heart size={24} color={colors.danger} fill={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </>
               )}
-            </View>
-            <View style={styles.swipeButtons}>
-              <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('left')}>
-                <X size={24} color={colors.textSecondary} strokeWidth={2.4} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.swipeBtn} onPress={() => swipeOut('right')}>
-                <Heart size={24} color={colors.danger} fill={colors.danger} />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
+            </Animated.View>
+          ))}
         </View>
       )}
 
     </SafeAreaView>
   );
 }
+
+// ── Category Filter Bar ───────────────────────────────────────────────────────
+
+const CATEGORIES: { key: string; label: string }[] = [
+  { key: 'photography', label: 'Cameras' },
+  { key: 'camping',     label: 'Camping'  },
+  { key: 'diy',         label: 'DIY'      },
+  { key: 'gaming',      label: 'Gaming'   },
+  { key: 'sports',      label: 'Sports'   },
+  { key: 'music',       label: 'Music'    },
+  { key: 'biking',      label: 'Biking'   },
+  { key: 'cooking',     label: 'Cooking'  },
+  { key: 'art',         label: 'Art'      },
+  { key: 'film',        label: 'Film'     },
+];
+
+function CategoryBar({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect: (cat: string | null) => void;
+}) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeCategoryStyles(colors), [colors]);
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={s.row}
+      style={s.bar}
+    >
+      {/* "All" chip */}
+      <TouchableOpacity
+        style={[s.chip, selected === null && s.chipActive]}
+        onPress={() => onSelect(null)}
+        activeOpacity={0.75}
+      >
+        <Text style={[s.chipLabel, selected === null && s.chipLabelActive]}>All</Text>
+      </TouchableOpacity>
+
+      {CATEGORIES.map(({ key, label }) => {
+        const active = selected === key;
+        return (
+          <TouchableOpacity
+            key={key}
+            style={[s.chip, active && s.chipActive]}
+            onPress={() => onSelect(active ? null : key)}
+            activeOpacity={0.75}
+          >
+            <CategoryIcon category={key} size={14} color={active ? colors.btnText : colors.textMuted} strokeWidth={2.2} />
+            <Text style={[s.chipLabel, active && s.chipLabelActive]}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+const makeCategoryStyles = (c: ThemeColors) => StyleSheet.create({
+  bar: {
+    backgroundColor: c.surface,
+    borderBottomWidth: 1, borderBottomColor: c.border,
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 10, gap: 8,
+  },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: c.card,
+    borderWidth: 1, borderColor: c.border,
+  },
+  chipActive: {
+    backgroundColor: c.btn,
+    borderColor: c.btn,
+  },
+  chipLabel: { fontSize: 13, fontWeight: '500', color: c.textMuted },
+  chipLabelActive: { color: c.btnText, fontWeight: '700' },
+});
 
 // ── Radius Slider ─────────────────────────────────────────────────────────────
 
@@ -318,6 +467,7 @@ function CardImage({ item }: { item: Item }) {
 
 const makeStyles = (c: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
+  header: { flexShrink: 0 },
   topBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
@@ -328,20 +478,30 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     borderWidth: 1, borderColor: c.border, borderRadius: 8,
     paddingHorizontal: 12, color: c.text, fontSize: 14,
   },
-  feed: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  feed: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 20, paddingHorizontal: 16 },
   card: {
-    width: CARD_WIDTH, height: 460,
+    width: CARD_WIDTH, height: 400,
     backgroundColor: c.card, borderRadius: 16,
     borderWidth: 2, borderColor: c.border, overflow: 'hidden',
   },
-  backCard: { position: 'absolute', transform: [{ scale: 0.95 }], opacity: 0.5 },
-  cardPhoto: { width: CARD_WIDTH, height: 220, borderBottomWidth: 1, borderBottomColor: c.border },
+  // The next card stays mounted (image pre-rendered, no flicker on promotion)
+  // but fully invisible — only the current card is ever shown.
+  backCard: { position: 'absolute', opacity: 0 },
+  cardPhoto: { width: CARD_WIDTH, height: 190, borderBottomWidth: 1, borderBottomColor: c.border },
   cardPhotoFallback: {
-    width: CARD_WIDTH, height: 220,
+    width: CARD_WIDTH, height: 190,
     backgroundColor: c.chip, alignItems: 'center', justifyContent: 'center',
     borderBottomWidth: 1, borderBottomColor: c.border,
   },
   itemEmoji: { fontSize: 64 },
+  impactBadge: {
+    position: 'absolute', top: 12, left: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(22, 163, 74, 0.88)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999,
+  },
+  impactBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   distanceBadge: {
     position: 'absolute', top: 12, right: 12,
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -390,8 +550,8 @@ const makeSliderStyles = (c: ThemeColors) => StyleSheet.create({
     position: 'absolute',
     left: THUMB_D / 2,
     right: THUMB_D / 2,
-    height: 3, borderRadius: 1.5,
-    backgroundColor: c.border,
+    height: 4, borderRadius: 2,
+    backgroundColor: c.textFaint,
   },
   trackFill: {
     position: 'absolute',

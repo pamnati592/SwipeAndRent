@@ -99,6 +99,22 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Each sub-tab gets its own unread count shown on the tab pill
 - SAS rule: `ChatRoomScreen` itself doesn't change — only the list that leads into it is split
 
+### Q. Bulk photo scan — auto-fill multiple items from one photo
+- In `AddItemScreen`, add a "Scan Items" button (camera icon) above the manual form.
+- User takes one photo of a group of objects (e.g. a pile of camping gear, a table of tools).
+- Photo is sent to a vision model (Gemini Vision or Groq-compatible endpoint) with a prompt that returns a structured JSON array: each element contains `name`, `category`, `description`, and a suggested `daily_price`.
+- App renders a review sheet listing all detected items — user can edit any field, remove a row, or add a blank row before confirming.
+- On confirm → each row is submitted as a separate `AddItem` call (reuse the existing item-creation logic; do not duplicate it).
+- The original photo is attached as the first item photo for each detected item, or left empty if the user prefers individual photos per item.
+- SAS rule: the actual item-save logic must go through the same path as the existing "Save" button in `AddItemScreen` — no parallel write path.
+- Edge cases to handle: model returns no items (show error toast), model times out after 5s (fall back to manual form), user denies camera permission (standard permission flow already used by AddItemScreen).
+
+### P. Refactor chatBus into a single Supabase realtime listener
+- Currently: `useUnreadCount` and `ChatRoomScreen` each have their own independent Supabase listeners, and `chatBus` is only used to signal "marked as read"
+- Goal: move the Supabase realtime connection into `chatBus` so it becomes the single listener for all incoming messages
+- `useUnreadCount` and `ChatRoomScreen` both subscribe to `chatBus` instead of Supabase directly
+- Clean flow: Supabase → chatBus → (useUnreadCount updates badge, ChatRoomScreen appends message)
+
 ### L. Google Cloud account hardening (operational, not code)
 - Before Free Trial expiry: set Hard Quotas (1000/day) on Places API + Geocoding API in Google Cloud Console
 - Add a Budget Alert of $1 with email notifications at 50% / 90% / 100%

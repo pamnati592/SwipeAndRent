@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo} from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, Image, FlatList, TouchableOpacity,
-  ScrollView, Dimensions, StatusBar, Alert, ActivityIndicator, Modal,
+  ScrollView, Dimensions, StatusBar, Alert, ActivityIndicator, Modal, Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
@@ -11,7 +11,10 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf } from 'lucide-react-native';
+import { getImpactScore } from '../utils/format';
+import { useDemoContext } from '../contexts/DemoContext';
+import TapFlash from '../components/TapFlash';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
@@ -112,6 +115,49 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [selectedEnd, setSelectedEnd] = useState<string | null>(prefilledEnd ?? null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [rentLoading, setRentLoading] = useState(false);
+
+  // Demo: when the script fires demoRentSignal — scroll to the bottom, visibly
+  // "tap" Rent, open the calendar, pick the dates, then close (the theater
+  // payment slide takes over).
+  const { demoState } = useDemoContext();
+  const scrollRef = useRef<ScrollView>(null);
+  const rentBtnScale = useRef(new Animated.Value(1)).current;
+  const [rentTapTs, setRentTapTs] = useState<number | null>(null);
+  const rentSignalTs = demoState.demoRentSignal?.ts ?? null;
+  useEffect(() => {
+    const signal = demoState.demoRentSignal;
+    if (!signal) return;
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+    let cancelled = false;
+
+    (async () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+      await sleep(1350);
+      if (cancelled) return;
+      // visible press on the Rent button
+      setRentTapTs(Date.now());
+      Animated.sequence([
+        Animated.timing(rentBtnScale, { toValue: 0.88, duration: 130, useNativeDriver: true }),
+        Animated.timing(rentBtnScale, { toValue: 1, duration: 160, useNativeDriver: true }),
+      ]).start();
+      await sleep(380);
+      if (cancelled) return;
+      openRentModal();
+      await sleep(1550);
+      if (cancelled) return;
+      setSelectedStart(signal.start);
+      setSelectedEnd(null);
+      await sleep(1200);
+      if (cancelled) return;
+      setSelectedEnd(signal.end);
+      // Close before the theater payment slide appears — iOS won't stack two native modals
+      await sleep(1900);
+      if (cancelled) return;
+      setRentModalVisible(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [rentSignalTs]);
 
   async function toggleWishlist() {
     setWishlistLoading(true);
@@ -287,7 +333,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
           {/* Photo gallery */}
           <View style={styles.galleryContainer}>
             {photos.length > 0 ? (
@@ -371,6 +417,35 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               )}
             </View>
 
+            {/* Impact Score */}
+            {(() => {
+              const score = getImpactScore(item.id);
+              const fill = (score - 3.0) / 2.0; // 0–1
+              const tier = score >= 4.6 ? 'Excellent' : score >= 4.1 ? 'Great' : score >= 3.6 ? 'Very Good' : 'Good';
+              const co2 = ((score - 3.0) * 5 + 2).toFixed(1);
+              return (
+                <View style={styles.impactCard}>
+                  <View style={styles.impactHeader}>
+                    <View style={styles.impactIconRow}>
+                      <Leaf size={15} color="#22c55e" strokeWidth={2.5} />
+                      <Text style={styles.impactLabel}>Impact Score</Text>
+                    </View>
+                    <View style={styles.impactTierBadge}>
+                      <Text style={styles.impactTierText}>{tier}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.impactScoreRow}>
+                    <Text style={styles.impactScoreNumber}>{score.toFixed(1)}</Text>
+                    <Text style={styles.impactScoreMax}> / 5.0</Text>
+                  </View>
+                  <View style={styles.impactBarTrack}>
+                    <View style={[styles.impactBarFill, { width: `${fill * 100}%` as any }]} />
+                  </View>
+                  <Text style={styles.impactCo2}>Renting instead of buying saves ~{co2} kg CO₂</Text>
+                </View>
+              );
+            })()}
+
             {item.description ? (
               <>
                 <Text style={styles.sectionLabel}>About this item</Text>
@@ -380,10 +455,13 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
             {/* Action buttons */}
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.actionBtn} onPress={openRentModal}>
-                <Tag size={18} color={colors.btnText} />
-                <Text style={styles.actionBtnText}>Rent</Text>
-              </TouchableOpacity>
+              <Animated.View style={{ transform: [{ scale: rentBtnScale }] }}>
+                <TouchableOpacity style={styles.actionBtn} onPress={openRentModal}>
+                  <Tag size={18} color={colors.btnText} />
+                  <Text style={styles.actionBtnText}>Rent</Text>
+                  <TapFlash trigger={rentTapTs} style={{ alignSelf: 'center' }} />
+                </TouchableOpacity>
+              </Animated.View>
 
               {item.sale_price != null && (
                 <TouchableOpacity style={styles.actionBtn}>
@@ -559,6 +637,34 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   actionBtnTextSecondary: { color: colors.text, fontSize: 16, fontWeight: '500' },
   actionBtnDisabled: { opacity: 0.5 },
   actionBtnWishlisted: { borderColor: colors.dangerSoft, backgroundColor: colors.dangerBg },
+
+  // Impact Score card
+  impactCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)',
+    padding: 16, gap: 10,
+  },
+  impactHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  impactIconRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  impactLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted, letterSpacing: 0.3 },
+  impactTierBadge: {
+    backgroundColor: 'rgba(34,197,94,0.15)',
+    paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)',
+  },
+  impactTierText: { color: '#22c55e', fontSize: 12, fontWeight: '700' },
+  impactScoreRow: { flexDirection: 'row', alignItems: 'baseline' },
+  impactScoreNumber: { fontSize: 36, fontWeight: '800', color: '#22c55e' },
+  impactScoreMax: { fontSize: 16, color: colors.textMuted, fontWeight: '500' },
+  impactBarTrack: {
+    height: 6, borderRadius: 3,
+    backgroundColor: colors.cardAlt, overflow: 'hidden',
+  },
+  impactBarFill: {
+    height: 6, borderRadius: 3,
+    backgroundColor: '#22c55e',
+  },
+  impactCo2: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
 
   // Modal
   modalContainer: { flex: 1, backgroundColor: colors.bg },

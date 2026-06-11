@@ -208,8 +208,8 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
 - All transactions processed via Stripe
 - Payment held in Escrow until lender confirms item return
 - In dispute → funds held until Admin decision
-- Platform takes a service fee from each transaction
-- Full price breakdown shown before final payment confirmation
+- Platform takes a service fee from each transaction — fee percentage is dynamically reduced based on the user's Algorithmic Trust score (see Section 3.12)
+- Full price breakdown shown before final payment confirmation, including the applicable fee tier
 - Cancellation up to 24 hours = full refund
 - All cancellation/return flows managed through app with clear status updates
 
@@ -221,6 +221,22 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
   - **Renter Score** – based on return time and care for the item
 - Rentals center shows all rentals: upcoming, active, past
 - Item management screen: edit card content, availability, dates, ratings
+
+### 3.12 Algorithmic Trust & Dynamic Fee Discount (Section 4.12)
+- Every user accumulates a **Trust Score** derived from their Lender Score and Renter Score
+- The platform service fee is dynamically discounted based on this score:
+
+| Trust Tier | Score Range | Fee Discount |
+|---|---|---|
+| New User | 0–2.9 | 0% (full fee) |
+| Trusted | 3.0–3.9 | 10% off |
+| Verified Trusted | 4.0–4.4 | 20% off |
+| Elite | 4.5–5.0 | 30% off |
+
+- Score is recalculated after every completed transaction
+- Discount applies to both sides of the transaction (renter and lender fees are each reduced by their own trust discount)
+- The current fee tier and discount are displayed on the user's Profile screen
+- Discounts are calculated at checkout and reflected in the payment breakdown before confirmation
 
 ---
 

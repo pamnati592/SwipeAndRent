@@ -7,7 +7,7 @@ import type { Item } from '../types/item';
 export type HomeStackParamList = {
   HomeMain: undefined;
   ItemDetail: { item: Item; openRent?: boolean; prefilledStart?: string; prefilledEnd?: string };
-  PublicProfile: { userId: string; userName: string };
+  PublicProfile: { userId: string; userName: string; approveTransactionId?: string; requestSummary?: string };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();

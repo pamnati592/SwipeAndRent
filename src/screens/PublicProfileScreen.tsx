@@ -11,14 +11,33 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, MapPin, Check, X } from 'lucide-react-native';
+import { useDemoContext } from '../contexts/DemoContext';
+import TapFlash from '../components/TapFlash';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 
 export default function PublicProfileScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { userId, userName } = route.params;
+  const { userId, userName, approveTransactionId, requestSummary } = route.params;
+  const { demoState } = useDemoContext();
+  const demoTap = demoState.demoTapTarget;
+  const [decideLoading, setDecideLoading] = useState(false);
+  const [decided, setDecided] = useState<'approved' | 'declined' | null>(null);
+
+  async function decideRequest(status: 'approved' | 'declined') {
+    if (!approveTransactionId) return;
+    setDecideLoading(true);
+    const update: Record<string, unknown> = { status };
+    if (status === 'approved') update.approved_at = new Date().toISOString();
+    const { error } = await supabase.from('transactions').update(update).eq('id', approveTransactionId);
+    setDecideLoading(false);
+    if (!error) {
+      setDecided(status);
+      setTimeout(() => navigation.goBack(), 900);
+    }
+  }
   const [items, setItems]           = useState<Item[]>([]);
   const [city, setCity]             = useState<string | null>(null);
   const [lenderScore, setLenderScore] = useState<number | null>(null);
@@ -124,6 +143,47 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
               </View>
             </View>
 
+            {/* Pending rental request — decide directly from the profile */}
+            {approveTransactionId && (
+              <View style={styles.approveCard}>
+                <Text style={styles.approveTitle}>Rental request from {userName}</Text>
+                {requestSummary ? <Text style={styles.approveSummary}>{requestSummary}</Text> : null}
+                {decided ? (
+                  <View style={styles.decidedRow}>
+                    {decided === 'approved'
+                      ? <><Check size={16} color={colors.success} strokeWidth={2.5} /><Text style={styles.decidedApproved}>Approved</Text></>
+                      : <><X size={16} color={colors.danger} strokeWidth={2.5} /><Text style={styles.decidedDeclined}>Declined</Text></>
+                    }
+                  </View>
+                ) : (
+                  <View style={styles.approveActions}>
+                    <TouchableOpacity
+                      style={[styles.approveBtn, decideLoading && styles.btnDisabled]}
+                      onPress={() => decideRequest('approved')}
+                      disabled={decideLoading}
+                    >
+                      {decideLoading
+                        ? <ActivityIndicator color={colors.btnText} size="small" />
+                        : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
+                      }
+                      <TapFlash
+                        trigger={demoTap?.target === 'profile-approve' ? demoTap.ts : null}
+                        style={{ alignSelf: 'center' }}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.declineBtn, decideLoading && styles.btnDisabled]}
+                      onPress={() => decideRequest('declined')}
+                      disabled={decideLoading}
+                    >
+                      <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
+                      <Text style={styles.declineBtnText}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
             {!loading && items.length > 0 && (
               <Text style={styles.sectionTitle}>LISTINGS</Text>
             )}
@@ -146,6 +206,31 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
 
   backButton: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
   backText: { fontSize: 32, color: colors.text, fontWeight: '300', lineHeight: 36 },
+
+  // Pending request approval card
+  approveCard: {
+    marginHorizontal: 20, marginTop: 16, padding: 16, gap: 10,
+    backgroundColor: colors.card, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  approveTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  approveSummary: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  approveActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  approveBtn: {
+    flex: 1, height: 44, borderRadius: 12, backgroundColor: colors.btn,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  approveBtnText: { color: colors.btnText, fontSize: 14, fontWeight: '700' },
+  declineBtn: {
+    flex: 1, height: 44, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.cardAlt,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  declineBtnText: { color: colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  btnDisabled: { opacity: 0.5 },
+  decidedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 6 },
+  decidedApproved: { color: colors.success, fontSize: 15, fontWeight: '700' },
+  decidedDeclined: { color: colors.danger, fontSize: 15, fontWeight: '700' },
 
   avatarSection: { alignItems: 'center', paddingVertical: 24, gap: 8 },
   avatar: {
